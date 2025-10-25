@@ -1,0 +1,84 @@
+apiVersion: tensor-fusion.ai/v1
+kind: LLMRoute
+metadata:
+  name: gpt4-cost-optimized
+  namespace: default
+spec:
+  name: gpt4-route
+  description: "Cost-optimized routing for GPT-4 requests"
+  
+  # Routing strategy
+  strategy:
+    type: cost  # Options: cost, latency, roundrobin, fallback
+    timeout: "30s"
+    retries: 3
+  
+  # Target providers
+  targets:
+    - provider: azure
+      model: gpt-4-turbo
+      weight: 100
+      endpoint: "https://azure-openai.openai.azure.com"
+    
+    - provider: openai
+      model: gpt-4-turbo
+      weight: 50
+      endpoint: "https://api.openai.com/v1"
+  
+  # Cost tracking
+  costTracking:
+    enabled: true
+    budget:
+      daily: 100.00
+      monthly: 3000.00
+    alertThreshold: 80
+  
+  # Rate limiting
+  rateLimit:
+    requestsPerMinute: 100
+    tokensPerMinute: 50000
+  
+  # Caching
+  cache:
+    enabled: true
+    ttl: "1h"
+  
+  # Fallback configuration
+  fallback:
+    enabled: true
+
+---
+apiVersion: tensor-fusion.ai/v1
+kind: LLMRoute
+metadata:
+  name: llama-with-fallback
+  namespace: default
+spec:
+  name: llama-route
+  description: "Fallback routing for Llama models"
+  
+  strategy:
+    type: fallback
+    timeout: "60s"
+    retries: 2
+  
+  targets:
+    - provider: self-hosted
+      model: llama-3-70b
+      weight: 100
+      endpoint: "http://vllm-llama.default.svc.cluster.local:8000"
+    
+    - provider: azure
+      model: llama-3-70b
+      weight: 80
+      endpoint: "https://azure-foundry.openai.azure.com"
+  
+  costTracking:
+    enabled: true
+    budget:
+      daily: 50.00
+      monthly: 1500.00
+    alertThreshold: 90
+  
+  fallback:
+    enabled: true

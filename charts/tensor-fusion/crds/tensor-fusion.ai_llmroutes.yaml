@@ -1,0 +1,166 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: llmroutes.tensor-fusion.ai
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+spec:
+  group: tensor-fusion.ai
+  names:
+    kind: LLMRoute
+    listKind: LLMRouteList
+    plural: llmroutes
+    singular: llmroute
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: LLMRoute configures routing to LLM providers via Portkey Gateway
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object.'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents.'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: LLMRouteSpec defines the desired state of LLMRoute
+            properties:
+              name:
+                description: Route name
+                type: string
+              description:
+                type: string
+              targets:
+                description: Target LLM providers
+                type: array
+                items:
+                  properties:
+                    provider:
+                      type: string
+                    model:
+                      type: string
+                    weight:
+                      type: integer
+                    apiKeyRef:
+                      properties:
+                        secretName:
+                          type: string
+                        secretKey:
+                          type: string
+                      type: object
+                    endpoint:
+                      type: string
+                  required:
+                  - provider
+                  - model
+                  type: object
+              fallback:
+                description: Fallback configuration
+                properties:
+                  enabled:
+                    type: boolean
+                  targets:
+                    type: array
+                    items:
+                      properties:
+                        provider:
+                          type: string
+                        model:
+                          type: string
+                        apiKeyRef:
+                          properties:
+                            secretName:
+                              type: string
+                            secretKey:
+                              type: string
+                          type: object
+                      type: object
+                type: object
+              strategy:
+                description: Load balancing strategy
+                properties:
+                  type:
+                    type: string
+                  retries:
+                    type: integer
+                  timeout:
+                    type: string
+                type: object
+              cache:
+                description: Caching configuration
+                properties:
+                  enabled:
+                    type: boolean
+                  ttl:
+                    type: string
+                  mode:
+                    type: string
+                type: object
+              rateLimit:
+                description: Rate limiting
+                properties:
+                  requestsPerMinute:
+                    type: integer
+                  tokensPerMinute:
+                    type: integer
+                type: object
+              costTracking:
+                description: Cost tracking configuration
+                properties:
+                  enabled:
+                    type: boolean
+                  budget:
+                    properties:
+                      daily:
+                        type: number
+                      monthly:
+                        type: number
+                    type: object
+                  alertThreshold:
+                    type: integer
+                type: object
+            required:
+            - name
+            - targets
+            type: object
+          status:
+            description: LLMRouteStatus defines the observed state
+            properties:
+              phase:
+                type: string
+              portkeyConfigID:
+                type: string
+              lastUpdated:
+                type: string
+                format: date-time
+              requestCount:
+                type: integer
+              totalCost:
+                type: number
+              conditions:
+                type: array
+                items:
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                  type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+

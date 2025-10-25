@@ -1,0 +1,214 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - events
+  - namespaces
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - nodes/finalizers
+  - pods/binding
+  - pods/exec
+  - pods/finalizers
+  verbs:
+  - create
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - nodes/status
+  - pods/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  - policy
+  - storage.k8s.io
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - gpunodeclasses
+  - gpunodes
+  - gpupools
+  - gpuresourcequotas
+  - gpus
+  - schedulingconfigtemplates
+  - tensorfusionclusters
+  - tensorfusionconnections
+  - tensorfusionworkloads
+  - workloadprofiles
+  - gpunodeclaims
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - gpunodeclasses/finalizers
+  - gpunodes/finalizers
+  - gpupools/finalizers
+  - gpuresourcequotas/finalizers
+  - gpus/finalizers
+  - schedulingconfigtemplates/finalizers
+  - tensorfusionclusters/finalizers
+  - tensorfusionconnections/finalizers
+  - tensorfusionworkloads/finalizers
+  - workloadprofiles/finalizers
+  - gpunodeclaims/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - gpunodeclasses/status
+  - gpunodes/status
+  - gpupools/status
+  - gpuresourcequotas/status
+  - gpus/status
+  - schedulingconfigtemplates/status
+  - tensorfusionclusters/status
+  - tensorfusionconnections/status
+  - tensorfusionworkloads/status
+  - workloadprofiles/status
+  - gpunodeclaims/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - karpenter.sh
+  resources:
+  - nodeclaims
+  verbs:
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - karpenter.*
+  resources:
+  - '*'
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+    - authentication.k8s.io
+  resources:
+    - tokenreviews
+  verbs:
+    - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tensor-fusion.fullname" . }}-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "tensor-fusion.serviceAccountName" . }}
+  namespace: {{ include "tensor-fusion.namespace" . }}

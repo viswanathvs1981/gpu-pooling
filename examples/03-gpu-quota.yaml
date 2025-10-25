@@ -1,0 +1,32 @@
+apiVersion: tensor-fusion.ai/v1
+kind: GPUResourceQuota
+metadata:
+  name: dev-team-quota
+  namespace: default
+spec:
+  # Single pod/workload limits
+  single:
+    maxGPUCount: 4
+    maxLimits:
+      vram: "80Gi"
+      tflops: "20000"
+    maxRequests:
+      vram: "60Gi"
+      tflops: "15000"
+    defaultLimits:
+      vram: "16Gi"
+      tflops: "5000"
+    defaultRequests:
+      vram: "8Gi"
+      tflops: "2500"
+  
+  # Total namespace limits
+  total:
+    limits:
+      vram: "320Gi"
+      tflops: "80000"
+    requests:
+      vram: "240Gi"
+      tflops: "60000"
+    maxWorkers: 50
+    alertThresholdPercent: 80

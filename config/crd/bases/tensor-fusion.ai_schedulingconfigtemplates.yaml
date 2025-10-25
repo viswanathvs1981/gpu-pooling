@@ -1,0 +1,318 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+  name: schedulingconfigtemplates.tensor-fusion.ai
+spec:
+  group: tensor-fusion.ai
+  names:
+    kind: SchedulingConfigTemplate
+    listKind: SchedulingConfigTemplateList
+    plural: schedulingconfigtemplates
+    singular: schedulingconfigtemplate
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.placement.mode
+      name: Mode
+      type: string
+    - jsonPath: .spec.placement.allowLocalGPU
+      name: Allow Local GPU
+      type: string
+    - jsonPath: .spec.hypervisor.autoFreezeAndResume.autoFreeze.enable
+      name: AutoFreeze
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: SchedulingConfigTemplate is the Schema for the schedulingconfigtemplates
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Place the workload to right nodes and scale smart.
+            properties:
+              autoScaling:
+                description: scale the workload based on the usage and traffic
+                properties:
+                  autoSetReplicas:
+                    description: |-
+                      layer 2 horizontal auto-scaling, scale up to more GPU cards if max limits threshold hit
+                      HPA-like, aggregate metrics data 1m-1h (when tf-worker scaled-up, should also trigger client pod's owner[Deployment etc.]'s replica increasing, check if KNative works)
+                    properties:
+                      enable:
+                        type: boolean
+                      evaluationPeriod:
+                        type: string
+                      scaleDownCoolDownTime:
+                        type: string
+                      scaleDownStep:
+                        type: string
+                      scaleUpCoolDownTime:
+                        type: string
+                      scaleUpStep:
+                        type: string
+                      targetTFlopsOfLimits:
+                        type: string
+                    type: object
+                  autoSetResources:
+                    description: |-
+                      layer 1 adjusting, to match the actual usage in the long run, only for N:M remote vGPU mode
+                      Adjust baseline requests to match the actual usage in longer period, such as 1day - 2weeks
+                    properties:
+                      confidenceInterval:
+                        description: 'The time interval used for computing the confidence
+                          multiplier for the lower and upper bound. Default: 24h'
+                        type: string
+                      enable:
+                        type: boolean
+                      historyLength:
+                        description: 'How much time back TSDB have to be queried to
+                          get historical metrics. Default: 1d'
+                        type: string
+                      historyResolution:
+                        description: 'Resolution at which TSDB is queried for historical
+                          metrics. Default: 1m'
+                        type: string
+                      lowerboundtflopspercentile:
+                        description: 'Tflops usage percentile that will be used for
+                          the lower bound on tflops recommendation. Default: 0.5'
+                        type: string
+                      lowerboundvrampercentile:
+                        description: 'Vram usage percentile that will be used for
+                          the lower bound on vram recommendation. Default: 0.5'
+                        type: string
+                      requestMarginFraction:
+                        description: 'Fraction of usage added as the safety margin
+                          to the recommended request. Default: 0.15'
+                        type: string
+                      targetResource:
+                        description: Target resource to scale, such as "tflops", "vram",
+                          or "all" by default
+                        type: string
+                      targettflopspercentile:
+                        description: 'Tflops usage percentile that will be used as
+                          a base for tflops target recommendation. Default: 0.9'
+                        type: string
+                      targetvrampercentile:
+                        description: 'Vram usage percentile that will be used as a
+                          base for vram target recommendation. Default: 0.9'
+                        type: string
+                      upperboundtflopspercentile:
+                        description: 'Tflops usage percentile that will be used for
+                          the upper bound on tflops recommendation. Default: 0.95'
+                        type: string
+                      upperboundvrampercentile:
+                        description: 'Vram usage percentile that will be used for
+                          the upper bound on vram recommendation. Default: 0.95'
+                        type: string
+                    type: object
+                  cronScalingRules:
+                    description: CronScalingRules defines a list of CronScaling rules
+                      used to schedule scaling actions based on cron expressions.
+                    items:
+                      description: |-
+                        CronScalingRule defines the rule for scaling resources based on a cron schedule.
+                        It allows enabling/disabling the scaler, specifying the time window for scaling,
+                        and configuring the desired resources and replicas during the scheduled period.
+                      properties:
+                        desiredReplicas:
+                          description: DesiredReplicas is the target number of replicas
+                            during the schedule.
+                          format: int32
+                          type: integer
+                        desiredResources:
+                          description: DesiredResources specifies the target resources
+                            to scale to during the schedule.
+                          properties:
+                            limits:
+                              properties:
+                                tflops:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                vram:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                              required:
+                              - tflops
+                              - vram
+                              type: object
+                            requests:
+                              properties:
+                                tflops:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                vram:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                              required:
+                              - tflops
+                              - vram
+                              type: object
+                          required:
+                          - limits
+                          - requests
+                          type: object
+                        enable:
+                          description: Enable specifies whether the cron scaler is
+                            enabled.
+                          type: boolean
+                        end:
+                          description: End is the end time for the scaling schedule,
+                            in cron format.
+                          type: string
+                        name:
+                          description: Name is the identifier for the cron scaler.
+                          type: string
+                        start:
+                          description: Start is the start time for the scaling schedule,
+                            in cron format.
+                          type: string
+                      type: object
+                    type: array
+                type: object
+              hypervisor:
+                description: single GPU device multi-process queuing and fair scheduling
+                  with QoS constraint
+                properties:
+                  autoFreezeAndResume:
+                    description: |-
+                      additional layer to save VRAM, auto-freeze memory and cool down to RAM and Disk
+                      Hypervisor will monitor and trigger freeze of inactive workers, Operator should mark them as scaled-to-zero and release the GPU pool resources, don't scale down CPU client part, so that they can continue to serve the traffic or scale down by other auto-scaling solutions like KEDA/KNative
+                    properties:
+                      autoFreeze:
+                        items:
+                          properties:
+                            enable:
+                              type: boolean
+                            freezeToDiskTTL:
+                              type: string
+                            freezeToMemTTL:
+                              type: string
+                            qos:
+                              enum:
+                              - low
+                              - medium
+                              - high
+                              - critical
+                              type: string
+                          type: object
+                        type: array
+                      intelligenceWarmup:
+                        properties:
+                          enable:
+                            type: boolean
+                          historyDataPeriod:
+                            type: string
+                          model:
+                            type: string
+                          predictionPeriod:
+                            type: string
+                        type: object
+                    type: object
+                  multiProcessQueuing:
+                    description: |-
+                      Hypervisor will move low priority jobs to pending queue if GPU is full
+                      This config can adjust hypervisor's queueing behavior to balance the co-scheduling CUDA calls
+                    properties:
+                      enable:
+                        type: boolean
+                      interval:
+                        type: string
+                      queueLevelTimeSlices:
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                type: object
+              placement:
+                description: place the client or worker to best matched nodes
+                properties:
+                  allowUsingLocalGPU:
+                    default: true
+                    type: boolean
+                  gpuFilters:
+                    items:
+                      description: "GPUFilter is to select eligible GPUs for scheduling.\n\nexample:\n```yaml\n-
+                        type: avoidTooMuchConnectionsOnSameGPU\nparams:\n\n\tconnectionNum:
+                        150\n\n- type: avoidDifferentZone\nparams:\n\n\t# by default,
+                        GPU worker will be scheduled into the same zone as CPU Client
+                        Pod to align AZ and improve performance\n\ttopologyKey: topology.kubernetes.io/zone\n\n```"
+                      properties:
+                        params:
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          type: string
+                      type: object
+                    type: array
+                  mode:
+                    default: NodeCompactGPULowLoad
+                    enum:
+                    - CompactFirst
+                    - LowLoadFirst
+                    - NodeCompactGPULowLoad
+                    type: string
+                required:
+                - mode
+                type: object
+              reBalancer:
+                description: |-
+                  avoid hot GPU devices and continuously balance the workload
+                  implemented by trigger a simulation scheduling and advise better GPU nodes for scheduler
+                properties:
+                  enable:
+                    type: boolean
+                  interval:
+                    type: string
+                  reBalanceCoolDownTime:
+                    type: string
+                  threshold:
+                    properties:
+                      matchAny:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                type: object
+            required:
+            - placement
+            type: object
+          status:
+            description: SchedulingConfigTemplateStatus defines the observed state
+              of SchedulingConfigTemplate.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

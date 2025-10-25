@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pytorch-training
+  namespace: default
+  labels:
+    app: pytorch-training
+    tensor-fusion.ai/pool: default-pool
+spec:
+  containers:
+  - name: trainer
+    image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+    command:
+      - python
+      - -c
+      - |
+        import torch
+        import time
+        
+        print(f"PyTorch version: {torch.__version__}")
+        print(f"CUDA available: {torch.cuda.is_available()}")
+        
+        if torch.cuda.is_available():
+            print(f"CUDA version: {torch.version.cuda}")
+            print(f"GPU count: {torch.cuda.device_count()}")
+            print(f"GPU name: {torch.cuda.get_device_name(0)}")
+            
+            # Allocate some GPU memory
+            device = torch.device("cuda:0")
+            x = torch.randn(1000, 1000, device=device)
+            y = torch.randn(1000, 1000, device=device)
+            
+            print("Running matrix multiplication on GPU...")
+            for i in range(100):
+                z = torch.matmul(x, y)
+                if i % 10 == 0:
+                    print(f"Iteration {i}: Memory allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+                time.sleep(1)
+            
+            print("Training simulation complete!")
+        else:
+            print("No GPU available, running on CPU")
+            time.sleep(300)
+    
+    resources:
+      requests:
+        # Request fractional GPU (50% of one GPU)
+        tensor-fusion.ai/gpu: "0.5"
+        tensor-fusion.ai/vram: "8Gi"
+        tensor-fusion.ai/tflops: "10"
+        cpu: "2"
+        memory: "4Gi"
+      limits:
+        tensor-fusion.ai/gpu: "0.5"
+        tensor-fusion.ai/vram: "8Gi"
+        tensor-fusion.ai/tflops: "10"
+        cpu: "4"
+        memory: "8Gi"
+  
+  restartPolicy: Never
+  
+  # Node selector for GPU nodes
+  nodeSelector:
+    tensor-fusion.ai/gpu: "true"
+  
+  # Tolerate GPU taints
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+

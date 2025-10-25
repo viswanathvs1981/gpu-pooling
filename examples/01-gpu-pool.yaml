@@ -1,0 +1,27 @@
+apiVersion: tensor-fusion.ai/v1
+kind: GPUPool
+metadata:
+  name: default-pool
+  namespace: tensor-fusion-sys
+  labels:
+    app: tensor-fusion
+    environment: production
+spec:
+  # Capacity configuration
+  capacityConfig:
+    minResources:
+      vram: "0Gi"
+      tflops: "0"
+    maxResources:
+      vram: "400Gi"  # 5 x A100 80GB
+      tflops: "1560"  # 5 x A100 312 TFlops
+    warmResources:
+      vram: "80Gi"   # Keep 1 GPU warm
+      tflops: "312"
+    oversubscription:
+      vramExpandToHostMem: 50      # Use 50% of host RAM for VRAM expansion
+      vramExpandToHostDisk: 70     # Use 70% of host disk for VRAM expansion
+      tflopsOversellRatio: 500     # Allow 5x TFlops oversell
+  
+  # Scheduling configuration template
+  schedulingConfigTemplate: default-strategy

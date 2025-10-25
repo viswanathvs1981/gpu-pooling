@@ -1,0 +1,13 @@
+## Append samples of your project ##
+resources:
+- v1_tensorfusionconnection.yaml
+- v1_gpu.yaml
+- v1_tensorfusioncluster.yaml
+- v1_gpupool.yaml
+- v1_gpunode.yaml
+- v1_gpunodeclass.yaml
+- v1_schedulingconfigtemplate.yaml
+- v1_workloadprofile.yaml
+- v1_tensorfusionworkload.yaml
+- v1_gpunodeclaim.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

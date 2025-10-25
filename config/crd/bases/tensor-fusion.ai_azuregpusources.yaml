@@ -1,0 +1,202 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: azuregpusources.tensor-fusion.ai
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+spec:
+  group: tensor-fusion.ai
+  names:
+    kind: AzureGPUSource
+    listKind: AzureGPUSourceList
+    plural: azuregpusources
+    singular: azuregpusource
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: AzureGPUSource represents Azure GPU resources
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AzureGPUSourceSpec defines the desired state
+            properties:
+              sourceType:
+                description: Source type (aks or foundry)
+                type: string
+                enum:
+                  - aks
+                  - foundry
+              foundryEndpoint:
+                description: For Foundry - model endpoint URL
+                type: string
+              aksClusterName:
+                description: For AKS - cluster name
+                type: string
+              subscriptionID:
+                description: Azure subscription ID
+                type: string
+              region:
+                description: Azure region
+                type: string
+              availableModels:
+                description: Available GPU models/SKUs
+                type: array
+                items:
+                  type: object
+                  properties:
+                    modelName:
+                      type: string
+                    sku:
+                      type: string
+                    tflops:
+                      type: string
+                    vram:
+                      type: string
+                    maxThroughput:
+                      type: integer
+                    available:
+                      type: boolean
+                      default: true
+                    costPerHour:
+                      type: string
+                  required:
+                    - modelName
+                    - sku
+                    - tflops
+                    - vram
+              priority:
+                description: Priority (0-100, higher = preferred)
+                type: integer
+                default: 50
+                minimum: 0
+                maximum: 100
+              costPerHour:
+                description: Cost per hour
+                type: string
+              auth:
+                description: Authentication configuration
+                type: object
+                properties:
+                  method:
+                    type: string
+                    enum:
+                      - servicePrincipal
+                      - managedIdentity
+                      - accessKey
+                    default: managedIdentity
+                  servicePrincipal:
+                    type: object
+                    properties:
+                      tenantID:
+                        type: string
+                      clientID:
+                        type: string
+                      clientSecret:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                          key:
+                            type: string
+                        required:
+                          - name
+                          - namespace
+                          - key
+                    required:
+                      - tenantID
+                      - clientID
+                      - clientSecret
+                  managedIdentityClientID:
+                    type: string
+                  accessKeySecret:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      key:
+                        type: string
+                    required:
+                      - name
+                      - namespace
+                      - key
+              enabled:
+                description: Enable this source
+                type: boolean
+                default: true
+              syncInterval:
+                description: Sync interval
+                type: string
+                default: "30s"
+            required:
+              - sourceType
+              - subscriptionID
+              - region
+            type: object
+          status:
+            description: AzureGPUSourceStatus defines the observed state
+            properties:
+              phase:
+                type: string
+                default: Pending
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                  required:
+                    - type
+                    - status
+              totalAvailableTFlops:
+                type: string
+              totalAvailableVRAM:
+                type: string
+              availableModelCount:
+                type: integer
+              lastSyncTime:
+                type: string
+                format: date-time
+              modelStatus:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    modelName:
+                      type: string
+                    available:
+                      type: boolean
+                    currentLoad:
+                      type: integer
+                    estimatedLatency:
+                      type: string
+              connectionStatus:
+                type: string
+              errorMessage:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

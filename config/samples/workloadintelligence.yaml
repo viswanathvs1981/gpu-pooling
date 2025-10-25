@@ -1,0 +1,77 @@
+apiVersion: tensor-fusion.ai/v1
+kind: WorkloadIntelligence
+metadata:
+  name: cluster-wide-intelligence
+spec:
+  enablePrediction: true
+  enableVectorization: true
+  
+  vectorDBConfig:
+    type: qdrant
+    endpoint: "http://qdrant-service.tensor-fusion-sys:6333"
+    collectionName: "tensor-fusion-workloads"
+    vectorDimension: 768
+    auth:
+      apiKeySecret:
+        name: qdrant-credentials
+        namespace: tensor-fusion-sys
+        key: api-key
+    syncInterval: "5m"
+  
+  modelTraining:
+    schedule: "0 2 * * 0"  # Weekly Sunday at 2 AM
+    dataRetention: "90d"
+    minSamples: 100
+    
+    models:
+      - name: lstm-forecaster
+        enabled: true
+        hyperparameters:
+          hidden_size: "128"
+          num_layers: "2"
+          dropout: "0.2"
+        epochs: 50
+        batchSize: 32
+      
+      - name: transformer-classifier
+        enabled: true
+        hyperparameters:
+          num_heads: "8"
+          num_layers: "6"
+          dropout: "0.1"
+        epochs: 30
+        batchSize: 64
+      
+      - name: gradient-boosting-regressor
+        enabled: true
+        hyperparameters:
+          n_estimators: "100"
+          max_depth: "6"
+          learning_rate: "0.1"
+        epochs: 20
+        batchSize: 128
+      
+      - name: rl-scheduler
+        enabled: false  # Advanced feature
+        hyperparameters:
+          gamma: "0.99"
+          epsilon: "0.1"
+        epochs: 100
+        batchSize: 16
+    
+    trainingResources:
+      tflops: "5000"
+      vram: "16Gi"
+  
+  featureExtractors:
+    - framework_detector
+    - workload_type_classifier
+    - model_family_detector
+    - resource_profiler
+    - environment_analyzer
+  
+  confidenceThreshold: "0.7"
+  
+  targetNamespaces: []  # Empty means all namespaces
+
+

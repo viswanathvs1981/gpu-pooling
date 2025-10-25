@@ -1,0 +1,35 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-mutating-webhook
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: {{ include "tensor-fusion.fullname" . }}-webhook
+      namespace: {{ include "tensor-fusion.namespace" . }}
+      path: /mutate-v1-pod
+  failurePolicy: {{ .Values.controller.admissionWebhooks.failurePolicy }}
+  name: mpod.tensor-fusion.ai
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+  timeoutSeconds: 10
+# When it's progressive migration mode, remove the object selector so that all pods should be mutated 
+# it's to identify resources used by native scheduler and device plugin, two types of workload won't overlap
+{{ if not .Values.controller.nvidiaOperatorProgressiveMigration }}
+  objectSelector:
+    matchExpressions:
+      - key: tensor-fusion.ai/enabled
+        operator: In
+        values:
+          - "true"
+{{ end }}

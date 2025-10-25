@@ -1,0 +1,36 @@
+apiVersion: tensor-fusion.ai/v1
+kind: AzureGPUSource
+metadata:
+  name: foundry-gpt4-eastus
+spec:
+  sourceType: foundry
+  foundryEndpoint: "https://my-foundry.openai.azure.com"
+  subscriptionID: "12345678-1234-1234-1234-123456789012"
+  region: eastus
+  priority: 60
+  costPerHour: "$2.00"
+  auth:
+    method: accessKey
+    accessKeySecret:
+      name: foundry-keys
+      namespace: tensor-fusion-sys
+      key: api-key
+  syncInterval: "1m"
+  enabled: true
+  availableModels:
+    - modelName: gpt-4
+      sku: gpt-4-deployment
+      tflops: "15000"
+      vram: "80Gi"
+      maxThroughput: 100
+      available: true
+      costPerHour: "$2.50"
+    - modelName: gpt-35-turbo
+      sku: gpt-35-turbo-deployment
+      tflops: "8000"
+      vram: "40Gi"
+      maxThroughput: 200
+      available: true
+      costPerHour: "$0.75"
+
+

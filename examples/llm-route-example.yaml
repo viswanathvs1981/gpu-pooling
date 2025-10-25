@@ -1,0 +1,77 @@
+# Example: LLM Route configuration for intelligent request routing
+# Routes LLM requests to the most cost-effective provider
+
+apiVersion: tensor-fusion.ai/v1
+kind: LLMRoute
+metadata:
+  name: gpt4-cost-optimized
+  namespace: default
+spec:
+  # Routing strategy
+  strategy: cost  # Options: cost, latency, availability, fallback
+  
+  # Target providers in priority order
+  targets:
+    - provider: azure
+      model: gpt-4-turbo
+      weight: 100
+      # If this target is backed by TensorFusion-managed GPU
+      gpuPool: default
+    
+    - provider: openai
+      model: gpt-4-turbo
+      weight: 50
+    
+    - provider: anthropic
+      model: claude-3-opus
+      weight: 30
+  
+  # Request selector (which requests match this route)
+  selector:
+    modelName: gpt-4
+    labels:
+      environment: production
+  
+  # Budget constraints
+  budget:
+    daily: "$10.00"
+    monthly: "$300.00"
+    exceedStrategy: alert  # Options: alert, block
+  
+  # Optional: Portkey config ID
+  portkeyConfigID: ""  # Will be set by controller
+
+---
+# Example: Multi-model fallback route
+apiVersion: tensor-fusion.ai/v1
+kind: LLMRoute
+metadata:
+  name: llama-with-fallback
+  namespace: default
+spec:
+  strategy: fallback
+  
+  targets:
+    # Primary: TensorFusion-managed Llama on AKS
+    - provider: custom
+      model: llama-3-70b
+      gpuPool: default
+      weight: 100
+    
+    # Fallback 1: Azure Foundry
+    - provider: azure
+      model: llama-3-70b
+      weight: 80
+    
+    # Fallback 2: External provider
+    - provider: replicate
+      model: llama-3-70b
+      weight: 50
+  
+  selector:
+    modelName: llama-3
+  
+  budget:
+    daily: "$5.00"
+    exceedStrategy: block
+

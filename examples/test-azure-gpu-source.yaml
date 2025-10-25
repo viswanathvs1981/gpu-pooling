@@ -1,0 +1,13 @@
+apiVersion: tensor-fusion.ai/v1
+kind: AzureGPUSource
+metadata:
+  name: test-azure-source
+  namespace: tensor-fusion-sys
+spec:
+  sourceType: "aks"
+  subscriptionID: "00000000-0000-0000-0000-000000000000"
+  region: "eastus"
+  aksClusterName: "test-cluster"
+  priority: 50
+  enabled: false
+

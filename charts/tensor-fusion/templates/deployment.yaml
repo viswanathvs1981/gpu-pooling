@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    tensor-fusion.ai/component: operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.controller.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+      tensor-fusion.ai/component: operator
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.controller.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+        tensor-fusion.ai/component: operator
+      annotations:
+        checksum/vector-config: {{ include (print $.Template.BasePath "/vector-config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.serviceAccountName" . }}
+      priorityClassName: system-cluster-critical
+      enableServiceLinks: false
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: tensor-fusion.ai/component
+                operator: In
+                values:
+                - operator
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: controller
+        image: {{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}
+        imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+        command:
+        - /manager
+        - -metrics-bind-address
+        - :9000
+        - -leader-elect
+        - -enable-auto-scale
+        - -enable-alert
+        - -health-probe-bind-address
+        - :8081
+        env:
+        - name: OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: INITIAL_GPU_NODE_LABEL_SELECTOR
+          value: {{ .Values.initialGpuNodeLabelSelector }}
+        - name: TSDB_MYSQL_HOST
+          value: {{ .Values.greptime.host }}
+        - name: TSDB_MYSQL_PORT
+          value: {{ .Values.greptime.port | quote }}
+        - name: TSDB_MYSQL_DATABASE
+          value: {{ .Values.greptime.db }}
+        - name: TSDB_MYSQL_USER
+          value: {{ .Values.greptime.user | default "root" }}
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8081
+          name: metrics
+          protocol: TCP
+        resources:
+          {{- toYaml .Values.controller.resources | nindent 10 }}
+        volumeMounts:
+        - name: cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+        - name: logs
+          mountPath: /logs
+        - name: cloud-vendor-credentials
+          mountPath: /tmp/secret
+          readOnly: true
+        - name: gpu-info
+          mountPath: /etc/tensor-fusion/gpu-info.yaml
+          subPath: gpu-info.yaml
+          readOnly: true
+        - name: config
+          mountPath: /etc/tensor-fusion/config.yaml
+          subPath: config.yaml
+          readOnly: true
+        - name: config
+          mountPath: /etc/tensor-fusion/scheduler-config.yaml
+          subPath: scheduler-config.yaml
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 2
+      - name: sidecar
+        image: "docker.io/library/busybox:1.36"
+        command: ["sh", "-c", "sleep infinity"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        imagePullPolicy: IfNotPresent
+      - name: vector
+        image: "docker.io/timberio/vector:latest-alpine"
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
+        - name: vector-config
+          mountPath: /etc/vector/vector.yaml
+          subPath: vector-operator.yaml
+        - name: kubernetes-logs
+          mountPath: /var/log/pods
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+      volumes:
+      - name: cert
+        secret:
+          secretName: {{ include "tensor-fusion.fullname" . }}-webhook-secret
+          items:
+          - key: cert
+            path: tls.crt
+          - key: key
+            path: tls.key
+      - name: vector-config
+        configMap:
+          name: {{ include "tensor-fusion.fullname" . }}-vector-config
+      - name: cloud-vendor-credentials
+        secret:
+          secretName: tf-cloud-vendor-credentials
+      - name: gpu-info
+        configMap:
+          name: {{ include "tensor-fusion.fullname" . }}-public-gpu-info
+      - name: config
+        configMap:
+          name: {{ include "tensor-fusion.fullname" . }}-config
+      - name: logs
+        emptyDir: {}
+      - name: kubernetes-logs
+        hostPath:
+          path: /var/log/pods
+          type: DirectoryOrCreate

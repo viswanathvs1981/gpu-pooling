@@ -1,0 +1,40 @@
+apiVersion: tensor-fusion.ai/v1
+kind: WorkloadIntelligence
+metadata:
+  name: test-intelligence
+  namespace: tensor-fusion-sys
+spec:
+  vectorDB:
+    type: "qdrant"
+    endpoint: "http://qdrant:6333"
+    collection: "workloads"
+    dimension: 384
+  embedding:
+    model: "all-MiniLM-L6-v2"
+    features:
+      - "cpu"
+      - "memory"
+      - "gpu"
+  models:
+    profiler:
+      enabled: true
+      updateInterval: "1h"
+      minSamples: 10
+    loadForecasting:
+      enabled: false
+    classification:
+      enabled: false
+    performancePrediction:
+      enabled: false
+    optimalPlacement:
+      enabled: false
+  training:
+    enabled: false
+  prediction:
+    enabled: false
+  feedback:
+    enabled: false
+
+
+
+

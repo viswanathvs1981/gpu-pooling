@@ -1,0 +1,78 @@
+# Example: Multiple workloads sharing a single GPU (fractional allocation)
+# This demonstrates TensorFusion's ability to run 3-4 workloads on one A100 GPU
+
+apiVersion: v1
+kind: List
+items:
+# Workload 1: Request 1/4 of A100 (5000 TFlops, 10GB VRAM)
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    name: vgpu-workload-1
+    annotations:
+      tensor-fusion.ai/enabled: "true"
+      tensor-fusion.ai/tflops: "5000"
+      tensor-fusion.ai/vram: "10Gi"
+      tensor-fusion.ai/pool-name: "default"
+      tensor-fusion.ai/qos: "medium"
+  spec:
+    containers:
+    - name: inference
+      image: nvidia/cuda:11.7.0-runtime-ubuntu20.04
+      command:
+      - bash
+      - -c
+      - |
+        echo "Workload 1: Running inference on fractional GPU"
+        nvidia-smi
+        sleep 3600
+    restartPolicy: Never
+
+# Workload 2: Request 1/4 of A100
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    name: vgpu-workload-2
+    annotations:
+      tensor-fusion.ai/enabled: "true"
+      tensor-fusion.ai/tflops: "5000"
+      tensor-fusion.ai/vram: "10Gi"
+      tensor-fusion.ai/pool-name: "default"
+      tensor-fusion.ai/qos: "medium"
+  spec:
+    containers:
+    - name: inference
+      image: nvidia/cuda:11.7.0-runtime-ubuntu20.04
+      command:
+      - bash
+      - -c
+      - |
+        echo "Workload 2: Running model serving on fractional GPU"
+        nvidia-smi
+        sleep 3600
+    restartPolicy: Never
+
+# Workload 3: Request 1/4 of A100
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    name: vgpu-workload-3
+    annotations:
+      tensor-fusion.ai/enabled: "true"
+      tensor-fusion.ai/tflops: "5000"
+      tensor-fusion.ai/vram: "10Gi"
+      tensor-fusion.ai/pool-name: "default"
+      tensor-fusion.ai/qos: "high"  # Higher priority
+  spec:
+    containers:
+    - name: inference
+      image: nvidia/cuda:11.7.0-runtime-ubuntu20.04
+      command:
+      - bash
+      - -c
+      - |
+        echo "Workload 3: Running batch inference on fractional GPU"
+        nvidia-smi
+        sleep 3600
+    restartPolicy: Never
+

@@ -1,0 +1,33 @@
+apiVersion: tensor-fusion.ai/v1
+kind: AzureGPUSource
+metadata:
+  name: aks-eastus-prod
+spec:
+  sourceType: aks
+  aksClusterName: tf-aks-prod
+  subscriptionID: "12345678-1234-1234-1234-123456789012"
+  region: eastus
+  priority: 80
+  costPerHour: "$2.50"
+  auth:
+    method: managedIdentity
+    managedIdentityClientID: "your-managed-identity-client-id"
+  syncInterval: "30s"
+  enabled: true
+  availableModels:
+    - modelName: Standard_NC24ads_A100_v4
+      sku: Standard_NC24ads_A100_v4
+      tflops: "19500"
+      vram: "40Gi"
+      maxThroughput: 1
+      available: true
+      costPerHour: "$3.67"
+    - modelName: Standard_NC48ads_A100_v4
+      sku: Standard_NC48ads_A100_v4
+      tflops: "39000"
+      vram: "80Gi"
+      maxThroughput: 2
+      available: true
+      costPerHour: "$7.35"
+
+

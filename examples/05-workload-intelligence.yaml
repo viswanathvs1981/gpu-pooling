@@ -1,0 +1,97 @@
+apiVersion: tensor-fusion.ai/v1
+kind: WorkloadIntelligence
+metadata:
+  name: ml-training-profile
+  namespace: default
+spec:
+  # Embedding configuration
+  embedding:
+    model: "sentence-transformers/all-MiniLM-L6-v2"
+    features:
+      - workload_type
+      - batch_size
+      - model_size
+      - sequence_length
+  
+  # Prediction configuration
+  prediction:
+    enabled: true
+    thresholds:
+      minConfidence: 0.75
+      fallbackToDefault: true
+    caching:
+      enabled: true
+      ttl: "1h"
+    autoApply:
+      enabled: false
+      dryRun: true
+      namespaces:
+        - default
+  
+  # Training configuration
+  training:
+    enabled: true
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    dataRetention: "30d"
+    resources:
+      cpu: "2"
+      memory: "4Gi"
+      gpu: "1"
+  
+  # Feedback loop
+  feedback:
+    enabled: true
+    collectMetrics: true
+    metricsWindow: "24h"
+    comparison:
+      enabled: true
+      deviationThreshold: 20
+      alertOnDeviation: true
+  
+  # Vector database configuration
+  vectorDB:
+    type: qdrant
+    collection: workload_profiles
+    endpoint: "http://qdrant.qdrant.svc.cluster.local:6333"
+    dimension: 384
+  
+  # ML models configuration
+  models:
+    profiler:
+      enabled: true
+      minSamples: 10
+      updateInterval: "1h"
+    
+    performancePrediction:
+      enabled: true
+      model: "random-forest"
+      metrics:
+        - latency
+        - throughput
+        - gpu_utilization
+      updateInterval: "6h"
+    
+    loadForecasting:
+      enabled: true
+      model: "lstm"
+      lookbackWindow: "7d"
+      forecastHorizon: "24h"
+      confidence: 0.85
+      updateInterval: "12h"
+    
+    optimalPlacement:
+      enabled: true
+      algorithm: "reinforcement-learning"
+      rewardFunction: "cost-performance"
+      explorationRate: 0.1
+      updateInterval: "1h"
+    
+    classification:
+      enabled: true
+      model: "bert-classifier"
+      classes:
+        - training
+        - inference
+        - batch
+        - interactive
+      updateInterval: "24h"

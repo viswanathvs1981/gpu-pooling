@@ -1,0 +1,105 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tensor-fusion-enhanced-role
+rules:
+# AzureGPUSource permissions
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - azuregpusources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - azuregpusources/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - azuregpusources/finalizers
+  verbs:
+  - update
+
+# LLMRoute permissions
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - llmroutes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - llmroutes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - llmroutes/finalizers
+  verbs:
+  - update
+
+# WorkloadIntelligence permissions
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - workloadintelligences
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - workloadintelligences/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - workloadintelligences/finalizers
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tensor-fusion-enhanced-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tensor-fusion-enhanced-role
+subjects:
+- kind: ServiceAccount
+  name: tensor-fusion
+  namespace: tensor-fusion-sys
+
+
+
+

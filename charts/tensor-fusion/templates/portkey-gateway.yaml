@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portkey-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: portkey-gateway
+  template:
+    metadata:
+      labels:
+        app: portkey-gateway
+    spec:
+      imagePullSecrets:
+      - name: {{ include "tensor-fusion.fullname" . }}-portkey-registry
+      containers:
+      - name: portkey
+        image: {{ .Values.portkey.image.repository }}:{{ .Values.portkey.image.tag }}
+        imagePullPolicy: {{ .Values.portkey.image.pullPolicy }}
+        env:
+        - name: REDIS_URL
+          value: redis://redis-master.storage:6379
+        ports:
+        - name: http
+          containerPort: 8080
+        resources:
+          {{- toYaml .Values.portkey.resources | nindent 10 }}

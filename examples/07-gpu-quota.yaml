@@ -1,0 +1,146 @@
+apiVersion: tensor-fusion.ai/v1
+kind: GPUResourceQuota
+metadata:
+  name: team-a-quota
+  namespace: default
+spec:
+  # Hard limits
+  hard:
+    # GPU limits
+    requests.tensor-fusion.ai/gpu: "10"
+    limits.tensor-fusion.ai/gpu: "10"
+    
+    # VRAM limits (in GiB)
+    requests.tensor-fusion.ai/vram: "800Gi"
+    limits.tensor-fusion.ai/vram: "800Gi"
+    
+    # TFlops limits
+    requests.tensor-fusion.ai/tflops: "3120"
+    limits.tensor-fusion.ai/tflops: "3120"
+    
+    # Pod limits
+    pods: "50"
+    
+    # Workload limits
+    tensorfusionworkloads.tensor-fusion.ai: "20"
+  
+  # Soft limits (warnings)
+  soft:
+    requests.tensor-fusion.ai/gpu: "8"
+    requests.tensor-fusion.ai/vram: "640Gi"
+    requests.tensor-fusion.ai/tflops: "2496"
+  
+  # Priority and preemption
+  priority:
+    default: 500
+    allowPreemption: true
+    preemptLowerPriority: true
+  
+  # Time-based quotas
+  timeWindows:
+    - name: business-hours
+      schedule: "0 9-17 * * 1-5"  # Mon-Fri, 9 AM - 5 PM
+      multiplier: 0.5  # Reduce quota by 50% during business hours
+    
+    - name: off-hours
+      schedule: "0 18-8 * * *"  # 6 PM - 8 AM daily
+      multiplier: 1.5  # Increase quota by 50% during off-hours
+    
+    - name: weekends
+      schedule: "0 * * * 0,6"  # Saturdays and Sundays
+      multiplier: 2.0  # Double quota on weekends
+  
+  # Cost tracking
+  costTracking:
+    enabled: true
+    budget:
+      daily: 500.0  # USD per day
+      weekly: 3000.0  # USD per week
+      monthly: 10000.0  # USD per month
+    
+    # Alert thresholds
+    alerts:
+      - threshold: 80
+        severity: warning
+      - threshold: 95
+        severity: critical
+  
+  # Scope
+  scopes:
+    - namespace: default
+    # Can also specify specific users or service accounts
+    # - user: "user@example.com"
+    # - serviceAccount: "ml-training-sa"
+  
+  # Monitoring
+  monitoring:
+    enabled: true
+    reportingInterval: 1h
+    exportToGreptimeDB: true
+---
+apiVersion: tensor-fusion.ai/v1
+kind: GPUResourceQuota
+metadata:
+  name: team-b-quota
+  namespace: production
+spec:
+  hard:
+    requests.tensor-fusion.ai/gpu: "20"
+    limits.tensor-fusion.ai/gpu: "20"
+    requests.tensor-fusion.ai/vram: "1600Gi"
+    limits.tensor-fusion.ai/vram: "1600Gi"
+    requests.tensor-fusion.ai/tflops: "6240"
+    limits.tensor-fusion.ai/tflops: "6240"
+    pods: "100"
+    tensorfusionworkloads.tensor-fusion.ai: "50"
+  
+  priority:
+    default: 1000  # Higher priority for production
+    allowPreemption: false  # Don't allow production workloads to be preempted
+  
+  costTracking:
+    enabled: true
+    budget:
+      daily: 1000.0
+      monthly: 25000.0
+  
+  scopes:
+    - namespace: production
+---
+apiVersion: tensor-fusion.ai/v1
+kind: GPUResourceQuota
+metadata:
+  name: research-quota
+  namespace: research
+spec:
+  hard:
+    requests.tensor-fusion.ai/gpu: "5"
+    limits.tensor-fusion.ai/gpu: "5"
+    requests.tensor-fusion.ai/vram: "400Gi"
+    limits.tensor-fusion.ai/vram: "400Gi"
+    requests.tensor-fusion.ai/tflops: "1560"
+    limits.tensor-fusion.ai/tflops: "1560"
+    pods: "20"
+  
+  # Allow burst capacity
+  burst:
+    enabled: true
+    maxBurstGPU: "10"
+    maxBurstDuration: 2h
+    cooldownPeriod: 4h
+  
+  priority:
+    default: 300  # Lower priority for research
+    allowPreemption: true
+  
+  costTracking:
+    enabled: true
+    budget:
+      daily: 200.0
+      monthly: 5000.0
+  
+  scopes:
+    - namespace: research
+
+
+

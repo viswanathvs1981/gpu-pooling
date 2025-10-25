@@ -1,0 +1,115 @@
+apiVersion: tensor-fusion.ai/v1
+kind: AzureGPUSource
+metadata:
+  name: azure-foundry-source
+  namespace: tensor-fusion-sys
+spec:
+  # Azure subscription configuration
+  subscriptionID: "3313419e-4453-45a1-bbfc-b6f99f0bbe4c"
+  
+  # Authentication
+  credentials:
+    type: managedIdentity  # Options: managedIdentity, servicePrincipal
+    # For service principal:
+    # clientID: "your-client-id"
+    # clientSecret:
+    #   secretRef:
+    #     name: azure-sp-credentials
+    #     key: client-secret
+    # tenantID: "your-tenant-id"
+  
+  # AKS cluster configuration
+  aksCluster:
+    enabled: true
+    resourceGroup: "tensor-fusion-rg"
+    clusterName: "tensor-fusion-aks"
+    nodePoolName: "gpunodes"
+    autoDiscovery: true
+    syncInterval: 5m
+  
+  # Azure AI Foundry configuration
+  azureFoundry:
+    enabled: true
+    workspaces:
+      - name: "default-workspace"
+        resourceGroup: "tensor-fusion-rg"
+        region: "eastus"
+    
+    # Model preferences
+    modelFilter:
+      include:
+        - "gpt-4"
+        - "gpt-35-turbo"
+        - "llama-2-70b"
+        - "mistral-large"
+      exclude:
+        - "gpt-3.5-turbo-instruct"  # Exclude legacy models
+    
+    # Deployment preferences
+    deploymentConfig:
+      autoProvision: true
+      minInstances: 1
+      maxInstances: 10
+      scaleToZero: true
+      idleTimeout: 15m
+  
+  # Cross-subscription scanning
+  crossSubscriptionScan:
+    enabled: false
+    subscriptions: []
+    # - "subscription-id-1"
+    # - "subscription-id-2"
+  
+  # GPU arbitrage configuration
+  arbitrage:
+    enabled: true
+    costOptimization: true
+    latencyThreshold: 100ms  # Max acceptable latency
+    
+    # Preference order (1 = highest priority)
+    preferences:
+      - source: aks
+        priority: 1
+        reason: "Lower latency, already provisioned"
+      - source: azure-foundry
+        priority: 2
+        reason: "Pay-per-use, good for burst workloads"
+  
+  # Resource mapping
+  resourceMapping:
+    # Map Azure GPU SKUs to TensorFusion resource types
+    gpuModels:
+      - azureSKU: "Standard_NC24ads_A100_v4"
+        gpuModel: "A100"
+        vramGB: 80
+        tflops: 312
+        count: 1
+      
+      - azureSKU: "Standard_NC48ads_A100_v4"
+        gpuModel: "A100"
+        vramGB: 80
+        tflops: 312
+        count: 2
+      
+      - azureSKU: "Standard_ND96asr_v4"
+        gpuModel: "A100"
+        vramGB: 40
+        tflops: 312
+        count: 8
+  
+  # Monitoring and sync
+  monitoring:
+    enabled: true
+    metricsInterval: 1m
+    healthCheckInterval: 5m
+  
+  # Sync configuration
+  sync:
+    interval: 5m
+    timeout: 30s
+    retryPolicy:
+      maxRetries: 3
+      backoff: exponential
+
+
+

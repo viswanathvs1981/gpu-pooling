@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llm-inference-demo
+  namespace: default
+  labels:
+    app: llm-inference
+    workload-type: llm-inference
+  annotations:
+    # TensorFusion annotations
+    tensor-fusion.ai/enabled: "true"
+    tensor-fusion.ai/pool-name: "default"
+    tensor-fusion.ai/qos: "high"
+    
+    # Let ML intelligence predict requirements
+    tensor-fusion.ai/auto-resources: "true"
+    
+    # Or manually specify
+    # tensor-fusion.ai/tflops: "10000"
+    # tensor-fusion.ai/vram: "30Gi"
+    # tensor-fusion.ai/gpu-model: "A100"
+    
+    # LLM routing
+    tensor-fusion.ai/llm-route: "gpt4-multi-source"
+spec:
+  containers:
+    - name: llm-app
+      image: your-registry/llm-inference:latest
+      env:
+        - name: MODEL_NAME
+          value: "gpt-4"
+        - name: MAX_TOKENS
+          value: "2000"
+        - name: TEMPERATURE
+          value: "0.7"
+        
+        # Portkey endpoint will be injected by TensorFusion webhook
+        # - name: OPENAI_API_BASE
+        #   value: "http://portkey-gateway:8080/v1"
+        
+        # API key will be managed by TensorFusion
+        # - name: OPENAI_API_KEY
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: llm-api-keys
+        #       key: openai-key
+      
+      resources:
+        requests:
+          memory: "4Gi"
+          cpu: "2"
+        limits:
+          memory: "8Gi"
+          cpu: "4"
+      
+      ports:
+        - containerPort: 8000
+          name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-inference-demo
+  namespace: default
+spec:
+  selector:
+    app: llm-inference
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+
+

@@ -1,0 +1,67 @@
+apiVersion: tensor-fusion.ai/v1
+kind: LLMRoute
+metadata:
+  name: gpt4-multi-source
+  namespace: default
+spec:
+  strategy: cost-optimized
+  targets:
+    - name: aks-gpt4-local
+      provider: azure
+      model: gpt-4
+      azureGPUSource: aks-eastus-prod
+      weight: 70
+      priority: 10
+      enabled: true
+      parameters:
+        temperature: "0.7"
+        max_tokens: "2000"
+    
+    - name: foundry-gpt4-burst
+      provider: azure
+      model: gpt-4
+      azureGPUSource: foundry-gpt4-eastus
+      weight: 30
+      priority: 20
+      enabled: true
+      parameters:
+        temperature: "0.7"
+        max_tokens: "2000"
+  
+  selector:
+    namespaces:
+      - default
+      - production
+    labelSelector:
+      matchLabels:
+        workload-type: llm-inference
+  
+  caching:
+    enabled: true
+    ttl: "1h"
+    similarityThreshold: "0.95"
+    keyIncludes:
+      - model
+      - temperature
+  
+  retry:
+    maxRetries: 3
+    initialDelay: "1s"
+    maxDelay: "10s"
+    backoffMultiplier: "2"
+    retryOnErrors:
+      - "500"
+      - "503"
+      - "429"
+  
+  budget:
+    maxCostPerRequest: "$0.10"
+    maxTokensPerRequest: 4000
+    dailyLimit: "$100"
+    monthlyLimit: "$2000"
+    onExceeded: fallback-cheaper
+  
+  timeout: "30s"
+  enableFallback: true
+
+

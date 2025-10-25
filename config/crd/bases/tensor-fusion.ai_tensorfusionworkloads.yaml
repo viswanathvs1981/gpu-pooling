@@ -1,0 +1,361 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+  name: tensorfusionworkloads.tensor-fusion.ai
+spec:
+  group: tensor-fusion.ai
+  names:
+    kind: TensorFusionWorkload
+    listKind: TensorFusionWorkloadList
+    plural: tensorfusionworkloads
+    singular: tensorfusionworkload
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.workerCount
+      name: Worker Count
+      type: string
+    - jsonPath: .status.readyWorkers
+      name: Ready Workers
+      type: string
+    - jsonPath: .status.podTemplateHash
+      name: Pod Template Hash
+      type: string
+    - jsonPath: .spec.poolName
+      name: Pool Name
+      type: string
+    - jsonPath: .spec.qos
+      name: QoS
+      type: string
+    - jsonPath: .spec.isLocalGPU
+      name: Is Local GPU
+      type: string
+    - jsonPath: .spec.gpuCount
+      name: GPU Number
+      type: string
+    - jsonPath: .spec.replicas
+      name: Replicas
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: TensorFusionWorkload manages GPU workloads with auto-scaling and resource optimization.
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: WorkloadProfileSpec defines workload configuration.
+            properties:
+              autoScalingConfig:
+                description: Auto-scaling configuration for GPU resources.
+                properties:
+                  autoSetReplicas:
+                    description: Horizontal auto-scaling configuration.
+                    properties:
+                      enable:
+                        type: boolean
+                      evaluationPeriod:
+                        type: string
+                      scaleDownCoolDownTime:
+                        type: string
+                      scaleDownStep:
+                        type: integer
+                      scaleUpCoolDownTime:
+                        type: string
+                      scaleUpStep:
+                        type: integer
+                    type: object
+                  autoSetResources:
+                    description: Resource adjustment configuration.
+                    properties:
+                      enable:
+                        type: boolean
+                      targetResource:
+                        type: string
+                    type: object
+                  cronScalingRules:
+                    description: Cron-based scaling rules.
+                    items:
+                      properties:
+                        desiredReplicas:
+                          format: int32
+                          type: integer
+                        desiredResources:
+                          properties:
+                            limits:
+                              properties:
+                                tflops:
+                                  x-kubernetes-int-or-string: true
+                                vram:
+                                  x-kubernetes-int-or-string: true
+                              type: object
+                            requests:
+                              properties:
+                                tflops:
+                                  x-kubernetes-int-or-string: true
+                                vram:
+                                  x-kubernetes-int-or-string: true
+                              type: object
+                          type: object
+                        enable:
+                          type: boolean
+                        end:
+                          type: string
+                        name:
+                          type: string
+                        start:
+                          type: string
+                      type: object
+                    type: array
+                type: object
+              gpuCount:
+                description: Number of GPUs required.
+                format: int32
+                type: integer
+              gpuModel:
+                description: Required GPU model.
+                type: string
+              isLocalGPU:
+                description: Use local GPU for best performance.
+                type: boolean
+              nodeAffinity:
+                description: Node affinity requirements.
+                properties:
+                  preferredDuringSchedulingIgnoredDuringExecution:
+                    items:
+                      properties:
+                        preference:
+                          properties:
+                            matchExpressions:
+                              items:
+                                properties:
+                                  key:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                            matchFields:
+                              items:
+                                properties:
+                                  key:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                          type: object
+                        weight:
+                          format: int32
+                          type: integer
+                      required:
+                      - preference
+                      - weight
+                      type: object
+                    type: array
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    properties:
+                      nodeSelectorTerms:
+                        items:
+                          properties:
+                            matchExpressions:
+                              items:
+                                properties:
+                                  key:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                            matchFields:
+                              items:
+                                properties:
+                                  key:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                          type: object
+                        type: array
+                    required:
+                    - nodeSelectorTerms
+                    type: object
+                type: object
+              poolName:
+                description: GPU pool name.
+                type: string
+              qos:
+                description: Quality of Service level.
+                type: string
+              replicas:
+                description: Number of replicas.
+                format: int32
+                type: integer
+              resources:
+                description: Resource requirements.
+                properties:
+                  limits:
+                    properties:
+                      tflops:
+                        x-kubernetes-int-or-string: true
+                      vram:
+                        x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    properties:
+                      tflops:
+                        x-kubernetes-int-or-string: true
+                      vram:
+                        x-kubernetes-int-or-string: true
+                    type: object
+                type: object
+              workerPodTemplate:
+                description: Worker pod template.
+                properties:
+                  metadata:
+                    type: object
+                  spec:
+                    type: object
+                type: object
+            type: object
+          status:
+            description: TensorFusionWorkloadStatus defines workload status.
+            properties:
+              activeCronScalingRule:
+                properties:
+                  desiredReplicas:
+                    format: int32
+                    type: integer
+                  desiredResources:
+                    properties:
+                      limits:
+                        properties:
+                          tflops:
+                            x-kubernetes-int-or-string: true
+                          vram:
+                            x-kubernetes-int-or-string: true
+                        type: object
+                      requests:
+                        properties:
+                          tflops:
+                            x-kubernetes-int-or-string: true
+                          vram:
+                            x-kubernetes-int-or-string: true
+                        type: object
+                    type: object
+                  enable:
+                    type: boolean
+                  end:
+                    type: string
+                  name:
+                    type: string
+                  start:
+                    type: string
+                type: object
+              appliedRecommendedReplicas:
+                format: int32
+                type: integer
+              conditions:
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      type: integer
+                    reason:
+                      type: string
+                    status:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              phase:
+                default: Pending
+                enum:
+                - Pending
+                - Running
+                - Failed
+                - Unknown
+                type: string
+              podTemplateHash:
+                type: string
+              readyWorkers:
+                format: int32
+                type: integer
+              recommendation:
+                properties:
+                  limits:
+                    properties:
+                      tflops:
+                        x-kubernetes-int-or-string: true
+                      vram:
+                        x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    properties:
+                      tflops:
+                        x-kubernetes-int-or-string: true
+                      vram:
+                        x-kubernetes-int-or-string: true
+                    type: object
+                type: object
+              workerCount:
+                format: int32
+                type: integer
+            required:
+            - workerCount
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

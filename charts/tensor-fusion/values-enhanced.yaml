@@ -1,0 +1,520 @@
+# TensorFusion Enhanced Configuration
+# This values file enables all advanced features including:
+# - Azure MCP integration
+# - Azure AI Foundry support
+# - Portkey AI Gateway
+# - Vector DB for ML intelligence
+# - Enhanced observability
+
+# Base operator configuration
+operator:
+  replicas: 3
+  image:
+    repository: YOUR_REGISTRY/tensor-fusion-operator
+    tag: latest
+    pullPolicy: Always
+  
+  resources:
+    requests:
+      cpu: 2
+      memory: 4Gi
+    limits:
+      cpu: 4
+      memory: 8Gi
+  
+  # Enable leader election for HA
+  leaderElection:
+    enabled: true
+    leaseDuration: 15s
+    renewDeadline: 10s
+    retryPeriod: 2s
+
+# Azure Integration
+azure:
+  enabled: true
+  
+  # Azure MCP (Management Control Plane) for AKS provisioning
+  mcp:
+    enabled: true
+    subscriptionId: "REPLACE_WITH_YOUR_SUBSCRIPTION_ID"
+    resourceGroup: "tensor-fusion-rg"
+    location: "eastus"
+    
+    # Credentials - use existing secret or create from values
+    credentialsSecretRef:
+      name: azure-credentials
+      keys:
+        clientId: client-id
+        clientSecret: client-secret
+        tenantId: tenant-id
+        subscriptionId: subscription-id
+  
+  # Azure AI Foundry integration
+  foundry:
+    enabled: true
+    
+    # Multiple subscriptions for cross-subscription discovery
+    subscriptions:
+      - subscriptionId: "REPLACE_WITH_SUBSCRIPTION_1"
+        endpoint: "https://YOUR-FOUNDRY-ENDPOINT.inference.ml.azure.com"
+        apiKeySecretRef:
+          name: foundry-keys
+          key: subscription-1-key
+      # Add more subscriptions as needed
+      # - subscriptionId: "REPLACE_WITH_SUBSCRIPTION_2"
+      #   endpoint: "https://..."
+      #   apiKeySecretRef: ...
+    
+    # Discovery interval for scanning available models
+    discoveryInterval: 5m
+  
+  # Azure GPU Sources (will be created automatically)
+  autoCreateSources:
+    enabled: true
+    createAKSSource: true
+    createFoundrySources: true
+
+# Portkey AI Gateway Integration
+portkey:
+  enabled: true
+  
+  # Deploy Portkey as part of TensorFusion
+  deploy:
+    enabled: true
+    replicas: 3
+    image:
+      repository: ghcr.io/portkey-ai/gateway
+      tag: latest
+    
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2
+        memory: 2Gi
+    
+    # Portkey configuration
+    config:
+      cacheEnabled: true
+      redisTTL: 3600  # 1 hour cache
+      logsEnabled: true
+      tracesEnabled: true
+      metricsEnabled: true
+  
+  # External Portkey (if not deploying)
+  external:
+    enabled: false
+    endpoint: "https://api.portkey.ai/v1"
+    apiKeySecretRef:
+      name: portkey-credentials
+      key: api-key
+  
+  # Dynamic routing configuration
+  routing:
+    enabled: true
+    syncInterval: 1m  # How often to update Portkey config
+    strategy: cost-optimized  # cost-optimized, latency-optimized, availability
+
+# Vector Database for ML Intelligence
+vectorDB:
+  enabled: true
+  type: qdrant  # qdrant, weaviate, pinecone
+  
+  # Embedded Qdrant (deployed in cluster)
+  qdrant:
+    enabled: true
+    
+    image:
+      repository: qdrant/qdrant
+      tag: v1.7.4
+    
+    resources:
+      requests:
+        cpu: 2
+        memory: 4Gi
+      limits:
+        cpu: 4
+        memory: 8Gi
+    
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: managed-premium  # Azure Premium SSD
+    
+    # Collection configuration
+    collections:
+      workloads:
+        name: tensor-fusion-workloads
+        vectorSize: 768
+        distance: Cosine
+      gpuPerformance:
+        name: tensor-fusion-gpu-performance
+        vectorSize: 128
+        distance: Euclidean
+  
+  # External vector DB (if not using embedded)
+  external:
+    enabled: false
+    endpoint: "http://qdrant-service.storage:6333"
+    apiKeySecretRef:
+      name: qdrant-credentials
+      key: api-key
+
+# ML/DL Intelligence Layer
+intelligence:
+  enabled: true
+  
+  # Workload profiling and prediction
+  prediction:
+    enabled: true
+    
+    # Feature extraction
+    features:
+      - containerImage
+      - resourceRequests
+      - labels
+      - annotations
+      - historicalUsage
+    
+    # ML models configuration
+    models:
+      loadForecaster:
+        type: lstm
+        trainingInterval: 24h
+        minDataPoints: 100
+      
+      workloadClassifier:
+        type: transformer
+        trainingInterval: 24h
+        minDataPoints: 50
+      
+      costPerformancePredictor:
+        type: gradientboosting
+        trainingInterval: 12h
+        minDataPoints: 100
+      
+      placementOptimizer:
+        type: reinforcementlearning
+        trainingInterval: 48h
+        minDataPoints: 200
+    
+    # Model serving
+    serving:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 4
+          memory: 8Gi
+        limits:
+          cpu: 8
+          memory: 16Gi
+  
+  # GPU broker for intelligent source selection
+  broker:
+    enabled: true
+    
+    # Decision criteria weights
+    weights:
+      cost: 0.4
+      latency: 0.3
+      availability: 0.2
+      performance: 0.1
+    
+    # Update interval for re-evaluating sources
+    evaluationInterval: 30s
+
+# Observability - Enhanced monitoring
+observability:
+  enabled: true
+  
+  # Prometheus metrics
+  metrics:
+    enabled: true
+    port: 8080
+    path: /metrics
+    
+    # Custom metrics for enhanced features
+    custom:
+      - llm_key_usage_tokens_total
+      - llm_key_cost_dollars_total
+      - azure_source_availability_ratio
+      - vector_db_query_duration_seconds
+      - prediction_accuracy_score
+      - gpu_source_selection_count
+      - model_switch_events_total
+  
+  # Distributed tracing with OpenTelemetry
+  tracing:
+    enabled: true
+    
+    otlp:
+      endpoint: "http://otel-collector.observability:4317"
+      protocol: grpc
+    
+    # Trace GPU context through stack
+    attributes:
+      - gpu.model
+      - gpu.uuid
+      - gpu.source
+      - gpu.cost
+      - workload.name
+      - workload.namespace
+      - prediction.confidence
+  
+  # Logging
+  logging:
+    level: info  # debug, info, warn, error
+    format: json
+    
+    # Enhanced logging for new components
+    components:
+      azureMCP: info
+      foundryBridge: info
+      portkeyRouting: debug
+      intelligenceEngine: info
+      vectorDB: info
+  
+  # API key tracking dashboard
+  apiKeyTracking:
+    enabled: true
+    granularity: per-request  # per-request, per-minute, per-hour
+    retention: 30d
+
+# GPU Pool defaults
+gpuPool:
+  # Auto-create default pool
+  autoCreate:
+    enabled: true
+    name: default
+    
+    capacityConfig:
+      minResources:
+        tflops: "0"
+        vram: "0Gi"
+      maxResources:
+        tflops: "100000"
+        vram: "1000Gi"
+      oversubscription:
+        tflopsOversellRatio: 500
+        vramExpandToHostMem: 50
+        vramExpandToHostDisk: 70
+    
+    nodeManagerConfig:
+      provisioningMode: AutoSelect
+      compactionEnabled: true
+      compactionThreshold: 0.3
+    
+    qosConfig:
+      defaultQoS: medium
+      definitions:
+        - name: low
+          priority: 10
+        - name: medium
+          priority: 50
+        - name: high
+          priority: 80
+      pricing:
+        - qos: low
+          requests:
+            perFP16TFlopsPerHour: "$0.003"
+            perGBOfVRAMPerHour: "$0.008"
+        - qos: medium
+          requests:
+            perFP16TFlopsPerHour: "$0.0069228"
+            perGBOfVRAMPerHour: "$0.01548"
+        - qos: high
+          requests:
+            perFP16TFlopsPerHour: "$0.015"
+            perGBOfVRAMPerHour: "$0.030"
+
+# vGPU Worker (hypervisor)
+vgpuWorker:
+  enabled: true
+  
+  daemonset:
+    nodeSelector:
+      pool: gpu
+    
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+    
+    resources:
+      requests:
+        cpu: 2
+        memory: 4Gi
+      limits:
+        cpu: 4
+        memory: 8Gi
+  
+  # RPC server for GPU operations
+  rpcServer:
+    port: 8000
+    maxConcurrentStreams: 100
+
+# Custom Scheduler
+scheduler:
+  enabled: true
+  
+  # Scheduler plugins
+  plugins:
+    gpuResourceFit:
+      enabled: true
+      weight: 50
+    
+    gpuTopology:
+      enabled: true
+      weight: 30
+    
+    nodeExpander:
+      enabled: true
+      weight: 20
+    
+    costOptimizer:
+      enabled: true
+      weight: 40
+    
+    intelligencePrediction:
+      enabled: true
+      weight: 30
+  
+  # Scheduler cache
+  cache:
+    ttl: 30s
+
+# Webhook configuration
+webhook:
+  enabled: true
+  
+  mutations:
+    - gpu
+    - pod
+    - tensorfusionworkload
+  
+  validations:
+    - gpu
+    - gpupool
+    - gpunodeclaim
+    - llmroute
+    - azuregpusource
+    - workloadintelligence
+  
+  # Certificate configuration
+  certificate:
+    create: true
+    certManager: true
+
+# RBAC
+rbac:
+  create: true
+  
+  # Additional permissions for Azure integration
+  azure:
+    enabled: true
+    clusterRole: true
+  
+  # Service account
+  serviceAccount:
+    create: true
+    name: tensor-fusion-operator
+    annotations:
+      # For workload identity
+      azure.workload.identity/client-id: "REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID"
+
+# Storage
+storage:
+  # Model artifacts
+  modelStorage:
+    enabled: true
+    type: azureBlob
+    
+    azure:
+      storageAccountName: "REPLACE_WITH_STORAGE_ACCOUNT"
+      containerName: tensor-fusion-models
+      credentialsSecretRef:
+        name: azure-storage-credentials
+        key: storage-account-key
+  
+  # Persistent volumes
+  persistence:
+    storageClass: managed-premium
+    accessMode: ReadWriteOnce
+
+# Security
+security:
+  # Pod Security Standards
+  podSecurityStandards:
+    enforce: restricted
+  
+  # Network policies
+  networkPolicies:
+    enabled: true
+    
+    ingress:
+      - from:
+        - namespaceSelector:
+            matchLabels:
+              name: default
+      
+    egress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: storage
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+  
+  # Secret management
+  secretStore:
+    type: azureKeyVault
+    
+    azureKeyVault:
+      vaultName: "REPLACE_WITH_KEY_VAULT_NAME"
+      tenantId: "REPLACE_WITH_TENANT_ID"
+
+# Feature flags
+features:
+  # Azure integration
+  azureMCPProvisioning: true
+  azureFoundryDiscovery: true
+  crossSubscriptionDiscovery: true
+  
+  # LLM Gateway
+  portkeyRouting: true
+  dynamicModelSwitching: true
+  llmCaching: true
+  llmGuardrails: true
+  
+  # ML Intelligence
+  workloadPrediction: true
+  autoResourceRecommendation: true
+  vectorSimilaritySearch: true
+  reinforcementLearningPlacement: true
+  
+  # GPU Management
+  fractionalGPU: true
+  vramOversubscription: true
+  remoteGPU: true
+  gpuTopologyAware: true
+  
+  # Observability
+  distributedTracing: true
+  apiKeyTracking: true
+  costAttribution: true
+  customMetrics: true
+
+# Global settings
+global:
+  # Image pull secrets (if using private registry)
+  imagePullSecrets:
+    - name: regcred
+  
+  # Timezone
+  timezone: UTC
+  
+  # Debug mode
+  debug: false

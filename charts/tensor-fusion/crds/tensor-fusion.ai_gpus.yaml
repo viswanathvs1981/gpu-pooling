@@ -1,0 +1,166 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+  name: gpus.tensor-fusion.ai
+spec:
+  group: tensor-fusion.ai
+  names:
+    kind: GPU
+    listKind: GPUList
+    plural: gpus
+    singular: gpu
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.gpuModel
+      name: GPU Model
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.capacity.tflops
+      name: Total TFlops
+      type: string
+    - jsonPath: .status.capacity.vram
+      name: Total VRAM
+      type: string
+    - jsonPath: .status.available.tflops
+      name: Available TFlops
+      type: string
+    - jsonPath: .status.available.vram
+      name: Available VRAM
+      type: string
+    - jsonPath: .status.uuid
+      name: Device UUID
+      type: string
+    - jsonPath: .status.usedBy
+      name: Used By
+      type: string
+    - jsonPath: .status.nodeSelector
+      name: Node
+      type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: GPU is the Schema for the gpus API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          status:
+            description: GPUStatus defines the observed state of GPU.
+            properties:
+              available:
+                properties:
+                  tflops:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  vram:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                required:
+                - tflops
+                - vram
+                type: object
+              capacity:
+                properties:
+                  tflops:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  vram:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                required:
+                - tflops
+                - vram
+                type: object
+              gpuModel:
+                type: string
+              message:
+                type: string
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: The host match selector to schedule worker pods
+                type: object
+              phase:
+                default: Pending
+                enum:
+                - Pending
+                - Provisioning
+                - Running
+                - Unknown
+                - Destroying
+                - Migrating
+                type: string
+              runningApps:
+                items:
+                  properties:
+                    count:
+                      description: Worker count
+                      type: integer
+                    name:
+                      description: Workload name namespace
+                      type: string
+                    namespace:
+                      type: string
+                  required:
+                  - count
+                  type: object
+                type: array
+              usedBy:
+                description: |-
+                  GPU is used by tensor-fusion or nvidia-operator
+                  This is the key to be compatible with nvidia-device-plugin to avoid resource overlap
+                  Hypervisor will watch kubelet device plugin to report all GPUs already used by nvidia-device-plugin
+                  GPUs will be grouped by usedBy to be used by different Pods,
+                  tensor-fusion annotation or nvidia-device-plugin resource block
+                enum:
+                - tensor-fusion
+                - nvidia-device-plugin
+                type: string
+              uuid:
+                type: string
+            required:
+            - available
+            - capacity
+            - gpuModel
+            - message
+            - nodeSelector
+            - phase
+            - uuid
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

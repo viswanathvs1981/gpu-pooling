@@ -1,0 +1,57 @@
+# Deployment values using ACR-built images
+operator:
+  image:
+    repository: tensorfusionacr90850.azurecr.io/tensor-fusion-operator
+    tag: v1.0.0-enhanced
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+nodeDiscovery:
+  enabled: true
+  image:
+    repository: tensorfusionacr90850.azurecr.io/node-discovery
+    tag: v1.0.0-enhanced
+    pullPolicy: Always
+
+# Enable Azure integration
+azure:
+  enabled: true
+  mcp:
+    enabled: true
+  foundry:
+    enabled: true
+    discoveryInterval: 5m
+
+# Enable Portkey integration
+portkey:
+  enabled: true
+  external:
+    enabled: true
+    endpoint: "http://portkey-gateway.tensor-fusion-sys:8080"
+
+# Enable Vector DB
+vectorDB:
+  enabled: true
+  type: qdrant
+  external:
+    enabled: true
+    endpoint: "http://qdrant-service.storage:6333"
+
+# Enable ML Intelligence
+intelligence:
+  enabled: true
+  prediction:
+    enabled: true
+
+# Enhanced observability
+observability:
+  enabled: true
+  metrics:
+    enabled: true

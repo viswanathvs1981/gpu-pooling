@@ -1,0 +1,202 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-vector-config
+  namespace: {{ include "tensor-fusion.namespace" . }}
+data:
+  vector-operator.yaml: |
+    api:
+      enabled: true
+    sources:
+      metrics:
+        type: file
+        data_dir: /logs
+        include:
+          - /logs/metrics*.log
+
+      kubernetes_logs:
+        type: kubernetes_logs
+        self_node_name: "${NODE_NAME}"
+        extra_label_selector: "tensor-fusion.ai/component in (operator)"
+
+    transforms:
+      prepare_kubernetes_logs:
+        type: remap
+        inputs:
+          - kubernetes_logs
+        source: |
+          .ts = now()
+          .message = .message
+          .container = .kubernetes.container_name
+          .pod = .kubernetes.pod_name
+          .namespace = .kubernetes.pod_namespace
+          .component = .kubernetes.pod_labels."tensor-fusion.ai/component"
+          
+          # Extract metrics from log messages
+          if match!(.message, r'GPU usage: memory=(?P<memory_percentage>\d+(\.\d+)?), compute=(?P<compute_percentage>\d+(\.\d+)?), temp=(?P<temperature>\d+(\.\d+)?)') {
+            .memory_percentage, err = to_float(.memory_percentage)
+            if err != null { log("Failed to parse memory_percentage: " + err, "error") }
+            .compute_percentage, err = to_float(.compute_percentage)
+            if err != null { log("Failed to parse compute_percentage: " + err, "error") }
+            .temperature, err = to_float(.temperature)
+            if err != null { log("Failed to parse temperature: " + err, "error") }
+          }
+          
+          if match!(.message, r'Worker metrics: throttled=(?P<compute_throttled_cnt>\d+), resumed=(?P<vram_resumed_cnt>\d+)') {
+            .compute_throttled_cnt, err = to_int(.compute_throttled_cnt)
+            if err != null { log("Failed to parse compute_throttled_cnt: " + err, "error") }
+            .vram_resumed_cnt, err = to_int(.vram_resumed_cnt)
+            if err != null { log("Failed to parse vram_resumed_cnt: " + err, "error") }
+          }
+          
+          # Extract workload info from pod name
+          if match!(.pod, r'(?P<workload>[^-]+)-(?P<worker>[^-]+)-(?P<uuid>[^-]+)') {
+            .workload = .workload
+            .worker = .worker
+            .uuid = .uuid
+          }
+          
+          # Extract node and pool info from labels
+          .node = .kubernetes.pod_labels."kubernetes.io/hostname"
+          .pool = .kubernetes.pod_labels."tensor-fusion.ai/pool"
+          
+          del(.kubernetes)
+          del(.file)
+          del(.source_type)
+    sinks:
+      sink_greptimedb_operator_metrics:
+        type: http
+        inputs:
+          - metrics        
+        method: post
+        encoding:
+          codec: text
+        {{- if ne .Values.greptime.isCloud true }}
+        uri: "http://{{ .Values.greptime.host }}:4000/v1/influxdb/api/v2/write?db=public&precision=ms"
+        {{- else }}
+        uri: "https://{{ .Values.greptime.host }}/v1/influxdb/api/v2/write?db={{ .Values.greptime.db }}&precision=ms"
+        request:
+          headers:
+            # refer https://docs.greptime.com/user-guide/protocols/http/#post-influxdb-line-protocol-data
+            Authorization: "token {{ .Values.greptime.user }}:{{ .Values.greptime.password }}"
+        {{- end }}
+      
+      sink_greptimedb_operator_logs:
+        type: http
+        inputs:
+          - prepare_kubernetes_logs
+        request:
+          headers:
+            "Content-Type": "application/x-www-form-urlencoded"
+          body: |
+            sql=INSERT INTO tf_worker_usage (ts, workload, worker, uuid, node, compute_throttled_cnt, vram_resumed_cnt) VALUES (CURRENT_TIMESTAMP, '%{string(workload) ?? "unknown"}', '%{string(worker) ?? "unknown"}', '%{string(uuid) ?? "unknown"}', '%{string(node) ?? "unknown"}', %{compute_throttled_cnt ?? 0}, %{vram_resumed_cnt ?? 0});
+        method: post
+        encoding:
+          codec: text
+        {{- if ne .Values.greptime.isCloud true }}
+        uri: "http://{{ .Values.greptime.host }}:4000/v1/sql"
+        {{- else }}
+        uri: "https://{{ .Values.greptime.host }}/v1/json/write"
+        request:
+          headers:
+            Authorization: "token {{ .Values.greptime.user }}:{{ .Values.greptime.password }}"
+        {{- end }}
+
+  vector-hypervisor.yaml: |
+    api:
+      enabled: true
+    
+    sources:
+      kubernetes_logs:
+        type: kubernetes_logs
+        self_node_name: "${NODE_NAME}"
+        extra_label_selector: "tensor-fusion.ai/component in (hypervisor,worker)"
+      metrics:
+        type: file
+        data_dir: /logs
+        include:
+          - /logs/metrics.log.*
+    
+    transforms:
+      prepare_kubernetes_logs:
+        type: remap
+        inputs:
+          - kubernetes_logs
+        source: |
+          .ts = now()
+          .message = .message
+          .container = .kubernetes.container_name
+          .pod = .kubernetes.pod_name
+          .namespace = .kubernetes.pod_namespace
+          .component = .kubernetes.pod_labels."tensor-fusion.ai/component"
+          
+          # Extract metrics from log messages
+          if match!(.message, r'GPU usage: memory=(?P<memory_percentage>\d+(\.\d+)?), compute=(?P<compute_percentage>\d+(\.\d+)?), temp=(?P<temperature>\d+(\.\d+)?)') {
+            .memory_percentage, err = to_float(.memory_percentage)
+            if err != null { log("Failed to parse memory_percentage: " + err, "error") }
+            .compute_percentage, err = to_float(.compute_percentage)
+            if err != null { log("Failed to parse compute_percentage: " + err, "error") }
+            .temperature, err = to_float(.temperature)
+            if err != null { log("Failed to parse temperature: " + err, "error") }
+          }
+          
+          if match!(.message, r'Worker metrics: throttled=(?P<compute_throttled_cnt>\d+), resumed=(?P<vram_resumed_cnt>\d+)') {
+            .compute_throttled_cnt, err = to_int(.compute_throttled_cnt)
+            if err != null { log("Failed to parse compute_throttled_cnt: " + err, "error") }
+            .vram_resumed_cnt, err = to_int(.vram_resumed_cnt)
+            if err != null { log("Failed to parse vram_resumed_cnt: " + err, "error") }
+          }
+          
+          # Extract workload info from pod name
+          if match!(.pod, r'(?P<workload>[^-]+)-(?P<worker>[^-]+)-(?P<uuid>[^-]+)') {
+            .workload = .workload
+            .worker = .worker
+            .uuid = .uuid
+          }
+          
+          # Extract node and pool info from labels
+          .node = .kubernetes.pod_labels."kubernetes.io/hostname"
+          .pool = .kubernetes.pod_labels."tensor-fusion.ai/pool"
+          
+          del(.kubernetes)
+          del(.file)
+          del(.source_type)
+
+    sinks:
+      sink_greptimedb_hypervisor_metrics:
+        type: http
+        inputs:
+          - metrics        
+        method: post
+        encoding:
+          codec: text
+        {{- if ne .Values.greptime.isCloud true }}
+        uri: "http://{{ .Values.greptime.host }}:4000/v1/influxdb/api/v2/write?db=public&precision=ms"
+        {{- else }}
+        uri: "https://{{ .Values.greptime.host }}/v1/influxdb/api/v2/write?db={{ .Values.greptime.db }}&precision=ms"
+        request:
+          headers:
+            # refer https://docs.greptime.com/user-guide/protocols/http/#post-influxdb-line-protocol-data
+            Authorization: "token {{ .Values.greptime.user }}:{{ .Values.greptime.password }}"
+        {{- end }}
+        
+      sink_greptimedb_hypervisor_worker_logs:
+        type: http
+        inputs:
+          - prepare_kubernetes_logs
+        request:
+          headers:
+            "Content-Type": "application/x-www-form-urlencoded"
+          body: |
+            sql=INSERT INTO tf_gpu_usage (ts, node, pool, uuid, memory_percentage, compute_percentage, temperature) VALUES (CURRENT_TIMESTAMP, '%{string(node) ?? "unknown"}', '%{string(pool) ?? "unknown"}', '%{string(uuid) ?? "unknown"}', %{memory_percentage ?? 0.0}, %{compute_percentage ?? 0.0}, %{temperature ?? 0.0});
+        method: post
+        encoding:
+          codec: text
+        {{- if ne .Values.greptime.isCloud true }}
+        uri: "http://{{ .Values.greptime.host }}:4000/v1/sql"
+        {{- else }}
+        uri: "https://{{ .Values.greptime.host }}/v1/json/write"
+        request:
+          headers:
+            Authorization: "token {{ .Values.greptime.user }}:{{ .Values.greptime.password }}"
+        {{- end }}

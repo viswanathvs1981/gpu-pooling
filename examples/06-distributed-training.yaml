@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: distributed-training-master
+  namespace: default
+  labels:
+    app: distributed-training
+    role: master
+    tensor-fusion.ai/pool: default-pool
+spec:
+  containers:
+  - name: trainer
+    image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+    command:
+      - python
+      - -c
+      - |
+        import torch
+        import torch.distributed as dist
+        import os
+        import time
+        
+        print("=== Distributed Training Master ===")
+        print(f"PyTorch version: {torch.__version__}")
+        print(f"CUDA available: {torch.cuda.is_available()}")
+        print(f"GPU count: {torch.cuda.device_count()}")
+        
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                print(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+        
+        # Simulate distributed training
+        print("\nInitializing distributed training...")
+        print("Waiting for workers to connect...")
+        
+        # Allocate tensors across multiple GPUs
+        if torch.cuda.device_count() > 1:
+            print(f"\nUsing {torch.cuda.device_count()} GPUs for training")
+            
+            # Create large tensors on each GPU
+            tensors = []
+            for i in range(torch.cuda.device_count()):
+                device = torch.device(f"cuda:{i}")
+                tensor = torch.randn(2000, 2000, device=device)
+                tensors.append(tensor)
+                print(f"Allocated tensor on GPU {i}")
+            
+            # Simulate training iterations
+            print("\nStarting training iterations...")
+            for epoch in range(10):
+                print(f"\nEpoch {epoch + 1}/10")
+                for i, tensor in enumerate(tensors):
+                    result = torch.matmul(tensor, tensor.t())
+                    print(f"  GPU {i}: Memory allocated: {torch.cuda.memory_allocated(i) / 1024**3:.2f} GB")
+                time.sleep(5)
+            
+            print("\nTraining complete!")
+        else:
+            print("Single GPU mode - for multi-GPU, request more GPUs")
+            time.sleep(300)
+    
+    resources:
+      requests:
+        # Request 4 GPUs for distributed training
+        tensor-fusion.ai/gpu: "4"
+        tensor-fusion.ai/vram: "320Gi"  # 80GB per GPU
+        tensor-fusion.ai/tflops: "1248"  # 312 TFlops per A100
+        cpu: "32"
+        memory: "256Gi"
+      limits:
+        tensor-fusion.ai/gpu: "4"
+        tensor-fusion.ai/vram: "320Gi"
+        tensor-fusion.ai/tflops: "1248"
+        cpu: "64"
+        memory: "512Gi"
+    
+    env:
+    - name: MASTER_ADDR
+      value: "distributed-training-master"
+    - name: MASTER_PORT
+      value: "29500"
+    - name: WORLD_SIZE
+      value: "4"
+    - name: RANK
+      value: "0"
+    
+    # GPU-over-IP configuration
+    - name: TENSOR_FUSION_GPU_OVER_IP
+      value: "true"
+    - name: TENSOR_FUSION_RDMA_ENABLED
+      value: "true"
+  
+  restartPolicy: Never
+  
+  # Node affinity for GPU nodes
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: tensor-fusion.ai/gpu
+            operator: In
+            values:
+            - "true"
+    
+    # Prefer nodes with A100 GPUs
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: tensor-fusion.ai/gpu-model
+            operator: In
+            values:
+            - "A100"
+  
+  # Tolerate GPU taints
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  
+  # Enable GPU topology optimization
+  annotations:
+    tensor-fusion.ai/gpu-topology: "nvlink"
+    tensor-fusion.ai/gpu-placement: "compact"  # Place GPUs close together
+    tensor-fusion.ai/enable-rdma: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: distributed-training-master
+  namespace: default
+spec:
+  selector:
+    app: distributed-training
+    role: master
+  ports:
+  - port: 29500
+    targetPort: 29500
+    name: dist-training
+  clusterIP: None  # Headless service for distributed training
+
+
+
