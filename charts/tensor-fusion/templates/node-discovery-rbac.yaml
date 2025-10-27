@@ -1,0 +1,56 @@
+{{- if .Values.nodeDiscovery.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-node-discovery
+  namespace: {{ include "tensor-fusion.namespace" . }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-node-discovery
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - tensor-fusion.ai
+  resources:
+  - gpunodes
+  - gpunodes/status
+  - gpus
+  - gpus/status
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-node-discovery
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tensor-fusion.fullname" . }}-node-discovery
+subjects:
+- kind: ServiceAccount
+  name: {{ include "tensor-fusion.fullname" . }}-node-discovery
+  namespace: {{ include "tensor-fusion.namespace" . }}
+{{- end }}
+

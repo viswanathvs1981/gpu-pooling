@@ -22,11 +22,10 @@ import (
 	"time"
 
 	"github.com/NexusGPU/tensor-fusion/internal/mcp"
-	"github.com/NexusGPU/tensor-fusion/internal/monitoring"
 )
 
 // CreateAnalyticsServer creates the analytics MCP server with all tools
-func CreateAnalyticsServer(metricsCollector *monitoring.MetricsCollector) *mcp.Server {
+func CreateAnalyticsServer() *mcp.Server {
 	server := mcp.NewServer("analytics", "Analytics and Cost Tracking Tools")
 
 	// query_usage tool

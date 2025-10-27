@@ -31,7 +31,7 @@ controller:
   image:
     repository: tensorfusion/tensor-fusion-operator
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.43.4-v3"
+    tag: "1.43.4"
     pullPolicy: Always
   # This is for setting Kubernetes Annotations to a Pod.
   # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/ 
@@ -519,142 +519,7 @@ nodeDiscovery:
   enabled: true
   image:
     repository: tensorfusionacr88742.azurecr.io/node-discovery
-    tag: "1.43.4-v3"
-    pullPolicy: Always
-
-# MCP Server configuration
-mcpServer:
-  enabled: true
-  replicas: 2
-  image:
-    repository: tensorfusionacr88742.azurecr.io/mcp-server
-    tag: "1.0.0"
-    pullPolicy: Always
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
-      memory: 1Gi
-      cpu: 1000m
-
-# Orchestrator Agent configuration
-orchestrator:
-  enabled: true
-  replicas: 1
-  image:
-    repository: tensorfusionacr88742.azurecr.io/orchestrator
-    tag: "1.0.0"
-    pullPolicy: Always
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
-      memory: 1Gi
-      cpu: 1000m
-
-# Specialized Agents configuration
-agents:
-  enabled: true
-  deploymentAgent:
-    image:
-      repository: tensorfusionacr88742.azurecr.io/deployment-agent
-      tag: "1.0.0"
-      pullPolicy: Always
-    resources:
-      requests:
-        memory: 128Mi
-        cpu: 50m
-      limits:
-        memory: 512Mi
-        cpu: 500m
-  trainingAgent:
-    image:
-      repository: tensorfusionacr88742.azurecr.io/training-agent
-      tag: "1.0.0"
-      pullPolicy: Always
-    resources:
-      requests:
-        memory: 128Mi
-        cpu: 50m
-      limits:
-        memory: 512Mi
-        cpu: 500m
-  costAgent:
-    image:
-      repository: tensorfusionacr88742.azurecr.io/cost-agent
-      tag: "1.0.0"
-      pullPolicy: Always
-    resources:
-      requests:
-        memory: 128Mi
-        cpu: 50m
-      limits:
-        memory: 512Mi
-        cpu: 500m
-
-# Memory Service configuration
-memoryService:
-  enabled: true
-  replicas: 2
-  image:
-    repository: tensorfusionacr88742.azurecr.io/memory-service
-    tag: "1.0.0"
-    pullPolicy: Always
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
-      memory: 1Gi
-      cpu: 1000m
-
-# Model Catalog configuration
-modelCatalog:
-  enabled: true
-  replicas: 1
-  image:
-    repository: tensorfusionacr88742.azurecr.io/model-catalog
-    tag: "1.0.0"
-    pullPolicy: Always
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
-      memory: 1Gi
-      cpu: 1000m
-  storage:
-    size: 100Gi
-    class: standard
-
-# Discovery Agent configuration
-discoveryAgent:
-  enabled: true
-  replicas: 1
-  image:
-    repository: tensorfusionacr88742.azurecr.io/discovery-agent
-    tag: "1.0.0"
-    pullPolicy: Always
-  resources:
-    requests:
-      memory: 128Mi
-      cpu: 50m
-    limits:
-      memory: 512Mi
-      cpu: 500m
-  healthCheck:
-    interval: 30s
-    timeout: 5s
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    tag: "1.43.4-v3"
+    tag: "1.43.4"
     pullPolicy: Always
   resources:
     requests:

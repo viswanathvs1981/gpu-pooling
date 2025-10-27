@@ -1,0 +1,141 @@
+{{- if .Values.agents.enabled }}
+---
+# Deployment Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-deployment-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: deployment-agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-deployment-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: deployment-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: deployment-agent
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: deployment-agent
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-deployment-agent
+      containers:
+      - name: deployment-agent
+        image: "{{ .Values.agents.deploymentAgent.image.repository }}:{{ .Values.agents.deploymentAgent.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.agents.deploymentAgent.image.pullPolicy }}
+        env:
+        - name: REDIS_ADDR
+          value: "redis.redis.svc.cluster.local:6379"
+        - name: MCP_SERVER_URL
+          value: "http://{{ include "tensor-fusion.fullname" . }}-mcp-server.{{ .Values.namespace }}.svc.cluster.local:8080"
+        args:
+        - --redis-addr=redis.redis.svc.cluster.local:6379
+        - --mcp-url=http://{{ include "tensor-fusion.fullname" . }}-mcp-server.{{ .Values.namespace }}.svc.cluster.local:8080
+        resources:
+          {{- toYaml .Values.agents.deploymentAgent.resources | nindent 10 }}
+---
+# Training Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-training-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: training-agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-training-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: training-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: training-agent
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: training-agent
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-training-agent
+      containers:
+      - name: training-agent
+        image: "{{ .Values.agents.trainingAgent.image.repository }}:{{ .Values.agents.trainingAgent.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.agents.trainingAgent.image.pullPolicy }}
+        env:
+        - name: REDIS_ADDR
+          value: "redis.redis.svc.cluster.local:6379"
+        - name: MCP_SERVER_URL
+          value: "http://{{ include "tensor-fusion.fullname" . }}-mcp-server.{{ .Values.namespace }}.svc.cluster.local:8080"
+        args:
+        - --redis-addr=redis.redis.svc.cluster.local:6379
+        - --mcp-url=http://{{ include "tensor-fusion.fullname" . }}-mcp-server.{{ .Values.namespace }}.svc.cluster.local:8080
+        resources:
+          {{- toYaml .Values.agents.trainingAgent.resources | nindent 10 }}
+---
+# Cost Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-cost-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cost-agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-cost-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cost-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cost-agent
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cost-agent
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-cost-agent
+      containers:
+      - name: cost-agent
+        image: "{{ .Values.agents.costAgent.image.repository }}:{{ .Values.agents.costAgent.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.agents.costAgent.image.pullPolicy }}
+        env:
+        - name: REDIS_ADDR
+          value: "redis.redis.svc.cluster.local:6379"
+        - name: MCP_SERVER_URL
+          value: "http://{{ include "tensor-fusion.fullname" . }}-mcp-server.{{ .Values.namespace }}.svc.cluster.local:8080"
+        args:
+        - --redis-addr=redis.redis.svc.cluster.local:6379
+        - --mcp-url=http://{{ include "tensor-fusion.fullname" . }}-mcp-server.{{ .Values.namespace }}.svc.cluster.local:8080
+        resources:
+          {{- toYaml .Values.agents.costAgent.resources | nindent 10 }}
+{{- end }}
+

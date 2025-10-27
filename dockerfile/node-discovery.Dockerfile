@@ -30,19 +30,19 @@ RUN CGO_ENABLED=1 \
     -a -o nodediscovery \
     cmd/nodediscovery/main.go
 
-# Create minimal runtime image
-FROM ubuntu:24.04
+# Use NVIDIA CUDA base image which has proper NVML setup
+FROM nvidia/cuda:12.2.0-base-ubuntu22.04
 
-# Install NVIDIA driver dependencies
+# Install minimal dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libnvidia-compute-535 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
 COPY --from=builder /workspace/nodediscovery .
 
-# Run as non-root user for security
-USER 65532:65532
+# Run as root for GPU access
+USER root
 
 ENTRYPOINT ["/nodediscovery"]

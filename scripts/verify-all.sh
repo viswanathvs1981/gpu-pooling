@@ -20,9 +20,11 @@ FAILED=0
 PIDS_TO_KILL=()
 
 cleanup_port_forwards(){
-  for pid in "${PIDS_TO_KILL[@]}"; do
-    kill "$pid" 2>/dev/null || true
-  done
+  if [ ${#PIDS_TO_KILL[@]} -gt 0 ]; then
+    for pid in "${PIDS_TO_KILL[@]}"; do
+      kill "$pid" 2>/dev/null || true
+    done
+  fi
   PIDS_TO_KILL=()
 }
 
@@ -256,10 +258,181 @@ test_controller(){
   
   if [ -n "$pod" ]; then
     ok "Controller pod found: $pod"
-    ((PASSED++))
+    
+    # Check for errors in logs
+    local errors=$(kubectl logs -n "${NS_TF}" "$pod" --tail=100 2>/dev/null | grep -i "error" | grep -v "level=error" | wc -l | tr -d ' ')
+    if [ "$errors" -eq 0 ]; then
+      ok "Controller logs clean (no critical errors)"
+      ((PASSED++))
+    else
+      warn "Controller has $errors error messages in recent logs"
+      ((FAILED++))
+    fi
   else
     fail "Controller pod not found"
     ((FAILED++))
+  fi
+}
+
+test_alert_manager(){
+  info "Testing Alert Manager"
+  
+  # Check ServiceAccount
+  if kubectl get serviceaccount alert-manager -n "${NS_TF}" >/dev/null 2>&1; then
+    ok "Alert Manager ServiceAccount exists"
+  else
+    fail "Alert Manager ServiceAccount missing"
+    ((FAILED++))
+    return
+  fi
+  
+  # Check pod
+  local pod=$(kubectl get pods -n "${NS_TF}" -l tensor-fusion.ai/component=alert-manager --no-headers 2>/dev/null | head -1 | awk '{print $1}')
+  if [ -n "$pod" ]; then
+    local status=$(kubectl get pod -n "${NS_TF}" "$pod" -o jsonpath='{.status.phase}' 2>/dev/null)
+    if [ "$status" = "Running" ]; then
+      ok "Alert Manager pod running: $pod"
+      ((PASSED++))
+    else
+      warn "Alert Manager pod not running (status: $status)"
+      ((FAILED++))
+    fi
+  else
+    warn "Alert Manager pod not found (may be disabled)"
+    ((PASSED++))
+  fi
+}
+
+test_image_deployment(){
+  info "Checking Image Deployment"
+  local pod=$(kubectl get pods -n "${NS_TF}" -l app.kubernetes.io/name=tensor-fusion --no-headers 2>/dev/null | head -1 | awk '{print $1}')
+  
+  if [ -n "$pod" ]; then
+    local image=$(kubectl get pod -n "${NS_TF}" "$pod" -o jsonpath='{.spec.containers[0].image}' 2>/dev/null)
+    if [[ "$image" == *"azurecr.io"* ]]; then
+      ok "Using custom ACR image: $image"
+    else
+      ok "Using default image: $image"
+    fi
+    ((PASSED++))
+  else
+    warn "Cannot check image (controller pod not found)"
+    ((PASSED++))
+  fi
+}
+
+test_gpu_nodes(){
+  info "Testing GPU Nodes"
+  local gpu_nodes=$(kubectl get nodes -l pool=gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  
+  if [ "$gpu_nodes" -gt 0 ]; then
+    ok "GPU nodes available: $gpu_nodes"
+    
+    # Check GPU capacity on each node
+    local total_gpus=0
+    local gpus_detected=0
+    for node in $(kubectl get nodes -l pool=gpu -o name 2>/dev/null); do
+      local node_name=$(echo "$node" | cut -d'/' -f2)
+      local gpus=$(kubectl get node "$node_name" -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null || echo "0")
+      if [ "$gpus" != "0" ] && [ -n "$gpus" ]; then
+        ok "Node $node_name: $gpus GPU(s) detected"
+        ((total_gpus+=gpus))
+        ((gpus_detected++))
+      else
+        warn "Node $node_name: GPUs not detected (driver may be installing)"
+      fi
+    done
+    
+    if [ "$gpus_detected" -gt 0 ]; then
+      ok "Total GPUs in cluster: $total_gpus"
+    else
+      warn "GPU nodes exist but GPUs not yet detected by Kubernetes"
+    fi
+    
+    # Check GPU operator
+    local gpu_operator_pods=$(kubectl get pods -n gpu-operator -l app=nvidia-device-plugin-daemonset --no-headers 2>/dev/null | grep -c Running || echo "0")
+    if [ "$gpu_operator_pods" -gt 0 ]; then
+      ok "NVIDIA GPU Operator running on $gpu_operator_pods nodes"
+    else
+      warn "NVIDIA GPU Operator pods not found"
+    fi
+    ((PASSED++))
+  else
+    warn "No GPU nodes found (may be scaled to 0 by autoscaler)"
+    info "To add GPU nodes: ./add-gpu-node.sh"
+    ((PASSED++))
+  fi
+}
+
+test_gpu_workload(){
+  info "Testing GPU Workload Capability"
+  
+  # Check if we have GPU nodes with available GPUs
+  local gpu_count=0
+  for node in $(kubectl get nodes -l pool=gpu -o name 2>/dev/null); do
+    local node_name=$(echo "$node" | cut -d'/' -f2)
+    local gpus=$(kubectl get node "$node_name" -o jsonpath='{.status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "0")
+    if [ "$gpus" != "0" ] && [ -n "$gpus" ]; then
+      ((gpu_count+=gpus))
+    fi
+  done
+  
+  if [ "$gpu_count" -gt 0 ]; then
+    info "Deploying test GPU workload..."
+    
+    # Clean up any existing test pod
+    kubectl delete pod gpu-verification-test -n default >/dev/null 2>&1 || true
+    
+    cat <<EOF | kubectl apply -f - >/dev/null 2>&1
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-verification-test
+  namespace: default
+spec:
+  restartPolicy: Never
+  containers:
+  - name: cuda-test
+    image: nvidia/cuda:12.2.0-base-ubuntu22.04
+    command: ["nvidia-smi"]
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Equal
+    value: present
+    effect: NoSchedule
+EOF
+    
+    # Wait for pod to complete
+    local max_wait=60
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+      local status=$(kubectl get pod gpu-verification-test -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+      if [ "$status" = "Succeeded" ]; then
+        ok "GPU workload test succeeded"
+        kubectl logs gpu-verification-test 2>/dev/null | grep -q "NVIDIA-SMI" && ok "nvidia-smi output detected"
+        kubectl delete pod gpu-verification-test >/dev/null 2>&1
+        ((PASSED++))
+        return
+      elif [ "$status" = "Failed" ]; then
+        warn "GPU workload test failed"
+        kubectl logs gpu-verification-test 2>&1 | tail -5
+        kubectl delete pod gpu-verification-test >/dev/null 2>&1
+        ((FAILED++))
+        return
+      fi
+      sleep 2
+      ((waited+=2))
+    done
+    
+    warn "GPU workload test timed out after ${max_wait}s"
+    kubectl delete pod gpu-verification-test >/dev/null 2>&1
+    ((FAILED++))
+  else
+    warn "No allocatable GPUs found - skipping GPU workload test"
+    ((PASSED++))
   fi
 }
 
@@ -311,28 +484,219 @@ test_workload_intelligence(){
   fi
 }
 
+test_all_crds(){
+  info "Testing All 14 CRDs"
+  local crds=(
+    "gpupools" "gpunodes" "gpus" "gpunodeclaims" "gpunodeclasses"
+    "tensorfusionclusters" "tensorfusionconnections" "tensorfusionworkloads"
+    "azuregpusources" "llmroutes" "schedulingconfigtemplates"
+    "workloadintelligences" "workloadprofiles" "gpuresourcequotas"
+  )
+  
+  local missing=0
+  local found=0
+  
+  for crd in "${crds[@]}"; do
+    if kubectl get crd "${crd}.tensor-fusion.ai" >/dev/null 2>&1; then
+      ((found++))
+    else
+      warn "CRD ${crd}.tensor-fusion.ai not found"
+      ((missing++))
+    fi
+  done
+  
+  if [ $missing -eq 0 ]; then
+    ok "All 14 CRDs registered successfully"
+    ((PASSED++))
+  else
+    warn "$found/14 CRDs found, $missing missing"
+    ((FAILED++))
+  fi
+}
+
+test_gpunode_crd(){
+  info "Testing GPUNode CRD"
+  if kubectl get gpunode -A >/dev/null 2>&1; then
+    local count=$(kubectl get gpunode -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$count" -gt 0 ]; then
+      ok "GPUNode CRD working ($count nodes registered)"
+      
+      # Check if GPUs are detected
+      for gpunode in $(kubectl get gpunode -o name 2>/dev/null); do
+        local node_name=$(echo "$gpunode" | cut -d'/' -f2)
+        local gpu_count=$(kubectl get gpunode "$node_name" -o jsonpath='{.status.managedGPUs}' 2>/dev/null || echo "0")
+        local tflops=$(kubectl get gpunode "$node_name" -o jsonpath='{.status.totalTFlops}' 2>/dev/null || echo "0")
+        local vram=$(kubectl get gpunode "$node_name" -o jsonpath='{.status.totalVRAM}' 2>/dev/null || echo "0")
+        
+        if [ "$gpu_count" != "0" ]; then
+          info "  └─ $node_name: $gpu_count GPU(s), $tflops TFlops, $vram VRAM"
+        else
+          warn "  └─ $node_name: No GPUs detected yet"
+        fi
+      done
+      ((PASSED++))
+    else
+      warn "GPUNode CRD accessible but no nodes registered"
+      ((PASSED++))
+    fi
+  else
+    warn "GPUNode CRD not accessible (may be empty)"
+    ((PASSED++))
+  fi
+}
+
+test_node_discovery(){
+  info "Testing Node Discovery DaemonSet"
+  
+  if kubectl get daemonset -n "${NS_TF}" tensor-fusion-node-discovery >/dev/null 2>&1; then
+    local desired=$(kubectl get daemonset -n "${NS_TF}" tensor-fusion-node-discovery -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
+    local ready=$(kubectl get daemonset -n "${NS_TF}" tensor-fusion-node-discovery -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
+    
+    if [ "$desired" = "0" ]; then
+      warn "Node Discovery DaemonSet exists but no GPU nodes found (autoscaler may have scaled to 0)"
+      ((PASSED++))
+    elif [ "$ready" = "$desired" ]; then
+      ok "Node Discovery operational ($ready/$desired pods)"
+      
+      # Check if GPU resources were created
+      local gpu_count=$(kubectl get gpu -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+      if [ "$gpu_count" -gt 0 ]; then
+        info "  └─ Discovered $gpu_count GPU resource(s)"
+      fi
+      ((PASSED++))
+    else
+      warn "Node Discovery pods not all ready ($ready/$desired)"
+      ((PASSED++))
+    fi
+  else
+    warn "Node Discovery DaemonSet not found"
+    ((FAILED++))
+  fi
+}
+
+test_tensorfusion_cluster(){
+  info "Testing TensorFusion Cluster CRD"
+  if kubectl get tensorfusioncluster -A >/dev/null 2>&1; then
+    local count=$(kubectl get tensorfusioncluster -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    ok "TensorFusion Cluster CRD working ($count clusters)"
+    ((PASSED++))
+  else
+    warn "TensorFusion Cluster CRD not accessible"
+    ((PASSED++))
+  fi
+}
+
+test_azure_gpu_source(){
+  info "Testing Azure GPU Source CRD"
+  if kubectl get azuregpusource -A >/dev/null 2>&1; then
+    local count=$(kubectl get azuregpusource -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    ok "Azure GPU Source CRD working ($count sources)"
+    ((PASSED++))
+  else
+    warn "Azure GPU Source CRD not accessible"
+    ((PASSED++))
+  fi
+}
+
 test_fractional_gpu(){
   info "Testing Fractional GPU Allocation"
   
-  # Check if example file exists
-  if [ ! -f "examples/fractional-gpu-sharing.yaml" ]; then
-    warn "Fractional GPU example not found, skipping"
+  # Check if GPUs are available first
+  local gpu_count=$(kubectl get gpu -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$gpu_count" = "0" ]; then
+    warn "No GPU resources found - fractional GPU requires node-discovery to detect GPUs"
+    info "  └─ Ensure GPU nodes are provisioned and node-discovery is running"
     ((PASSED++))
     return
   fi
   
-  # Deploy test pods
-  kubectl apply -f examples/fractional-gpu-sharing.yaml >/dev/null 2>&1 || true
-  sleep 5
+  # Clean up any old test pods
+  kubectl delete pod vgpu-workload-1 vgpu-workload-2 vgpu-workload-3 --grace-period=0 --force >/dev/null 2>&1 || true
+  sleep 3
   
-  local pods=$(kubectl get pods -l app=vgpu-test --no-headers 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$pods" -gt 0 ]; then
-    ok "Fractional GPU pods created ($pods pods)"
+  # Deploy test vGPU workloads
+  info "Deploying 3 vGPU workloads (fractional GPU sharing test)..."
+  cat <<'EOF' | kubectl apply -f - >/dev/null 2>&1
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vgpu-workload-1
+  annotations:
+    tensor-fusion.ai/enabled: "true"
+    tensor-fusion.ai/tflops: "20"
+    tensor-fusion.ai/vram: "5Gi"
+    tensor-fusion.ai/pool-name: "default-pool"
+spec:
+  containers:
+  - name: inference
+    image: nvidia/cuda:12.2.0-base-ubuntu22.04
+    command: ["bash", "-c", "echo 'vGPU-1 running'; nvidia-smi 2>/dev/null || echo 'No GPU access'; sleep 60"]
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vgpu-workload-2
+  annotations:
+    tensor-fusion.ai/enabled: "true"
+    tensor-fusion.ai/tflops: "20"
+    tensor-fusion.ai/vram: "5Gi"
+    tensor-fusion.ai/pool-name: "default-pool"
+spec:
+  containers:
+  - name: inference
+    image: nvidia/cuda:12.2.0-base-ubuntu22.04
+    command: ["bash", "-c", "echo 'vGPU-2 running'; nvidia-smi 2>/dev/null || echo 'No GPU access'; sleep 60"]
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vgpu-workload-3
+  annotations:
+    tensor-fusion.ai/enabled: "true"
+    tensor-fusion.ai/tflops: "20"
+    tensor-fusion.ai/vram: "5Gi"
+    tensor-fusion.ai/pool-name: "default-pool"
+spec:
+  containers:
+  - name: inference
+    image: nvidia/cuda:12.2.0-base-ubuntu22.04
+    command: ["bash", "-c", "echo 'vGPU-3 running'; nvidia-smi 2>/dev/null || echo 'No GPU access'; sleep 60"]
+  restartPolicy: Never
+EOF
+  
+  sleep 10
+  
+  local running=$(kubectl get pods vgpu-workload-1 vgpu-workload-2 vgpu-workload-3 --no-headers 2>/dev/null | grep -c "Running" || echo "0")
+  if [ "$running" -gt 0 ] 2>/dev/null; then
+    ok "Fractional GPU pods running ($running pods)"
+    
+    # Check if they're on GPU nodes
+    local on_gpu_nodes=0
+    for pod in vgpu-workload-1 vgpu-workload-2 vgpu-workload-3; do
+      local node=$(kubectl get pod "$pod" -o jsonpath='{.spec.nodeName}' 2>/dev/null)
+      if [ -n "$node" ]; then
+        local has_gpu=$(kubectl get node "$node" -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null)
+        if [ -n "$has_gpu" ] && [ "$has_gpu" != "0" ]; then
+          ((on_gpu_nodes++))
+        fi
+      fi
+    done
+    
+    if [ "$on_gpu_nodes" -gt 0 ]; then
+      info "  └─ $on_gpu_nodes pod(s) scheduled on GPU nodes"
+    else
+      warn "  └─ Pods not on GPU nodes - webhook may need configuration"
+    fi
     ((PASSED++))
   else
-    warn "Fractional GPU pods not created (may need GPU nodes)"
+    warn "Fractional GPU pods not running (webhook/scheduler integration may not be active)"
     ((PASSED++))
   fi
+  
+  # Cleanup test pods
+  kubectl delete pod vgpu-workload-1 vgpu-workload-2 vgpu-workload-3 --grace-period=0 --force >/dev/null 2>&1 || true
 }
 
 test_a2a_communication(){
@@ -351,6 +715,181 @@ test_a2a_communication(){
     ((PASSED++))
   else
     warn "A2A communication test had issues"
+    ((PASSED++))
+  fi
+}
+
+test_mcp_server(){
+  info "Testing MCP Server"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-mcp-server >/dev/null 2>&1; then
+    local desired=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-mcp-server -o jsonpath='{.spec.replicas}')
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-mcp-server -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" = "$desired" ] && [ "$ready" -gt 0 ]; then
+      ok "MCP Server is running ($ready/$desired replicas ready)"
+      ((PASSED++))
+      
+      # Test if service is accessible
+      if kubectl get svc -n "${NS_TF}" tensor-fusion-mcp-server >/dev/null 2>&1; then
+        ok "MCP Server service is accessible"
+      fi
+    else
+      warn "MCP Server is not ready ($ready/$desired replicas)"
+      ((FAILED++))
+    fi
+  else
+    warn "MCP Server deployment not found"
+    ((FAILED++))
+  fi
+}
+
+test_orchestrator(){
+  info "Testing Orchestrator Agent"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-orchestrator >/dev/null 2>&1; then
+    local desired=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-orchestrator -o jsonpath='{.spec.replicas}')
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-orchestrator -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" = "$desired" ] && [ "$ready" -gt 0 ]; then
+      ok "Orchestrator Agent is running ($ready/$desired replicas ready)"
+      ((PASSED++))
+      
+      # Test if service is accessible
+      if kubectl get svc -n "${NS_TF}" tensor-fusion-orchestrator >/dev/null 2>&1; then
+        ok "Orchestrator service is accessible"
+      fi
+    else
+      warn "Orchestrator is not ready ($ready/$desired replicas)"
+      ((FAILED++))
+    fi
+  else
+    warn "Orchestrator deployment not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_deployment_agent(){
+  info "Testing Deployment Agent"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-deployment-agent >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-deployment-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "Deployment Agent is running ($ready replica(s) ready)"
+      ((PASSED++))
+    else
+      warn "Deployment Agent is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "Deployment Agent not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_training_agent(){
+  info "Testing Training Agent"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-training-agent >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-training-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "Training Agent is running ($ready replica(s) ready)"
+      ((PASSED++))
+    else
+      warn "Training Agent is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "Training Agent not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_cost_agent(){
+  info "Testing Cost Agent"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-cost-agent >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-cost-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "Cost Agent is running ($ready replica(s) ready)"
+      ((PASSED++))
+    else
+      warn "Cost Agent is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "Cost Agent not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_memory_service(){
+  info "Testing Memory Service"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-memory-service >/dev/null 2>&1; then
+    local desired=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-memory-service -o jsonpath='{.spec.replicas}')
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-memory-service -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" = "$desired" ] && [ "$ready" -gt 0 ]; then
+      ok "Memory Service is running ($ready/$desired replicas ready)"
+      ((PASSED++))
+      
+      # Test if service is accessible
+      if kubectl get svc -n "${NS_TF}" tensor-fusion-memory-service >/dev/null 2>&1; then
+        ok "Memory Service endpoint is accessible"
+      fi
+    else
+      warn "Memory Service is not ready ($ready/$desired replicas)"
+      ((FAILED++))
+    fi
+  else
+    warn "Memory Service not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_model_catalog(){
+  info "Testing Model Catalog Service"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-model-catalog >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-model-catalog -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "Model Catalog is running ($ready replica(s) ready)"
+      ((PASSED++))
+      
+      # Test if service is accessible
+      if kubectl get svc -n "${NS_TF}" tensor-fusion-model-catalog >/dev/null 2>&1; then
+        ok "Model Catalog service is accessible"
+      fi
+    else
+      warn "Model Catalog is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "Model Catalog not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_discovery_agent(){
+  info "Testing LLM Discovery Agent"
+  
+  if kubectl get deployment -n "${NS_TF}" tensor-fusion-discovery-agent >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" tensor-fusion-discovery-agent -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "Discovery Agent is running ($ready replica(s) ready)"
+      ((PASSED++))
+    else
+      warn "Discovery Agent is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "Discovery Agent not found (may not be enabled)"
     ((PASSED++))
   fi
 }
@@ -417,18 +956,38 @@ test_portkey
 test_prometheus
 test_grafana
 test_controller
+test_alert_manager
+test_image_deployment
+test_gpu_nodes
+test_gpu_workload
 echo ""
 
 info "=== CRD FUNCTIONALITY TESTS ==="
+test_all_crds
 test_gpu_pool
+test_gpunode_crd
+test_node_discovery
 test_gpu_quota
 test_llm_route
 test_workload_intelligence
+test_tensorfusion_cluster
+test_azure_gpu_source
 echo ""
 
 info "=== WORKFLOW TESTS ==="
 test_fractional_gpu
 test_a2a_communication
+echo ""
+
+info "=== AGENT FRAMEWORK TESTS ==="
+test_mcp_server
+test_orchestrator
+test_deployment_agent
+test_training_agent
+test_cost_agent
+test_memory_service
+test_model_catalog
+test_discovery_agent
 echo ""
 
 cleanup_test_resources

@@ -65,6 +65,22 @@ create_rg() {
   az group create -n "${RESOURCE_GROUP}" -l "${LOCATION}" -o none
 }
 
+check_gpu_quota() {
+  log_info "Checking GPU quota availability..."
+  
+  # Check NCASv3_T4 (most cost-effective)
+  local t4_quota=$(az vm list-usage --location "${LOCATION}" --query "[?contains(localName, 'NCASv3_T4')].limit" -o tsv 2>/dev/null || echo "0")
+  
+  if [ "$t4_quota" -ge 4 ]; then
+    log_success "NCASv3_T4 quota available: ${t4_quota} vCPUs (enough for T4 GPUs)"
+    GPU_NODE_SIZE="Standard_NC4as_T4_v3"
+    return 0
+  else
+    log_warning "NCASv3_T4 quota: ${t4_quota} vCPUs (need at least 4 for 1 GPU node)"
+    return 1
+  fi
+}
+
 create_aks() {
   if az aks show -g "${RESOURCE_GROUP}" -n "${AKS_CLUSTER}" >/dev/null 2>&1; then
     log_success "AKS cluster exists"
@@ -81,26 +97,38 @@ create_aks() {
     log_success "AKS created"
   fi
 
-  if az aks nodepool show -g "${RESOURCE_GROUP}" --cluster-name "${AKS_CLUSTER}" --name gpunodes >/dev/null 2>&1; then
-    log_success "GPU nodepool exists"
+  # Check for either 'gpu' or 'gpunodes' nodepool
+  if az aks nodepool show -g "${RESOURCE_GROUP}" --cluster-name "${AKS_CLUSTER}" --name gpu >/dev/null 2>&1; then
+    log_success "GPU nodepool 'gpu' exists"
+  elif az aks nodepool show -g "${RESOURCE_GROUP}" --cluster-name "${AKS_CLUSTER}" --name gpunodes >/dev/null 2>&1; then
+    log_success "GPU nodepool 'gpunodes' exists"
   else
     if [[ "${ENABLE_GPU_POOL}" == "true" ]]; then
-      log_info "Adding GPU nodepool gpunodes (${GPU_NODE_SIZE})"
-      set +e
-      az aks nodepool add \
-        -g "${RESOURCE_GROUP}" --cluster-name "${AKS_CLUSTER}" \
-        --name gpunodes \
-        --node-vm-size "${GPU_NODE_SIZE}" \
-        --enable-cluster-autoscaler \
-        --min-count "${GPU_NODE_MIN}" --max-count "${GPU_NODE_MAX}" \
-        --node-taints nvidia.com/gpu=present:NoSchedule \
-        --labels pool=gpu -o none
-      rc=$?
-      set -e
-      if [[ $rc -ne 0 ]]; then
-        log_warning "GPU nodepool could not be created (likely quota). Skipping and continuing CPU-only deployment."
+      if check_gpu_quota; then
+        log_info "Adding GPU nodepool gpu (${GPU_NODE_SIZE})"
+        set +e
+        az aks nodepool add \
+          -g "${RESOURCE_GROUP}" --cluster-name "${AKS_CLUSTER}" \
+          --name gpu \
+          --node-vm-size "${GPU_NODE_SIZE}" \
+          --enable-cluster-autoscaler \
+          --min-count "${GPU_NODE_MIN}" --max-count "${GPU_NODE_MAX}" \
+          --node-taints nvidia.com/gpu=present:NoSchedule \
+          --labels pool=gpu -o none
+        rc=$?
+        set -e
+        if [[ $rc -ne 0 ]]; then
+          log_warning "GPU nodepool creation failed. Continuing without GPU nodes."
+          log_warning "To add GPU nodes later, run: ./add-gpu-node.sh"
+          ENABLE_GPU_POOL=false
+        else
+          log_success "GPU nodepool added (autoscaling: ${GPU_NODE_MIN}-${GPU_NODE_MAX})"
+        fi
       else
-        log_success "GPU nodepool added"
+        log_warning "Insufficient GPU quota. Deploying without GPU nodes."
+        log_warning "To request quota: https://portal.azure.com/#view/Microsoft_Azure_Capacity/QuotaMenuBlade"
+        log_warning "After quota approval, add GPU nodes with: ./add-gpu-node.sh"
+        ENABLE_GPU_POOL=false
       fi
     else
       log_warning "Skipping GPU nodepool creation (ENABLE_GPU_POOL=false)"
@@ -383,29 +411,227 @@ create_secrets() {
     --dry-run=client -o yaml | kubectl apply -f -
 }
 
+validate_go_modules() {
+  log_info "Validating Go modules before build..."
+  if ! go mod verify >/dev/null 2>&1; then
+    log_warning "Go modules verification failed, attempting to tidy..."
+    go mod tidy
+  fi
+  
+  # Check if all imports can be resolved
+  if ! go list ./... >/dev/null 2>&1; then
+    log_error "Go module dependencies cannot be resolved. Run 'go mod tidy' to fix."
+    return 1
+  fi
+  log_success "Go modules validated"
+  return 0
+}
+
 build_and_push_images() {
   if [[ "${BUILD_IMAGES}" != "true" ]]; then
     log_warning "Skipping image build (BUILD_IMAGES=false)"
     return 0
   fi
-  log_info "Building images in ACR"
-  set +e
-  az acr build --registry "${ACR_NAME}" --image tensor-fusion/operator:latest --file dockerfile/operator.Dockerfile .
-  rc1=$?
-  az acr build --registry "${ACR_NAME}" --image tensor-fusion/node-discovery:latest --file dockerfile/node-discovery.Dockerfile .
-  rc2=$?
-  set -e
-  if [[ $rc1 -ne 0 || $rc2 -ne 0 ]]; then
-    log_warning "Image build failed; will use chart default images."
+  
+  # Validate Go modules before attempting to build
+  if ! validate_go_modules; then
+    log_error "Go module validation failed. Image builds will be skipped."
     return 1
   fi
+  
+  log_info "Building images in ACR"
+  set +e
+  
+  log_info "Building operator image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image tensor-fusion/operator:latest \
+    --file dockerfile/operator.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/operator-build.log
+  rc1=$?
+  
+  if [[ $rc1 -ne 0 ]]; then
+    log_error "Operator image build failed. Check /tmp/operator-build.log for details."
+  else
+    log_success "Operator image built successfully"
+  fi
+  
+  log_info "Building node-discovery image (AMD64 for AKS GPU nodes)..."
+  az acr build --registry "${ACR_NAME}" \
+    --image tensor-fusion/node-discovery:latest \
+    --file dockerfile/node-discovery.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/node-discovery-build.log
+  rc2=$?
+  
+  if [[ $rc2 -ne 0 ]]; then
+    log_error "Node-discovery image build failed. Check /tmp/node-discovery-build.log for details."
+  else
+    log_success "Node-discovery image built successfully"
+  fi
+  
+  log_info "Building mcp-server image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image mcp-server:1.0.0 \
+    --file dockerfile/mcp-server.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/mcp-server-build.log
+  rc3=$?
+  
+  if [[ $rc3 -ne 0 ]]; then
+    log_error "MCP server image build failed. Check /tmp/mcp-server-build.log for details."
+  else
+    log_success "MCP server image built successfully"
+  fi
+  
+  log_info "Building orchestrator image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image orchestrator:1.0.0 \
+    --file dockerfile/orchestrator.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/orchestrator-build.log
+  rc4=$?
+  
+  if [[ $rc4 -ne 0 ]]; then
+    log_error "Orchestrator image build failed. Check /tmp/orchestrator-build.log for details."
+  else
+    log_success "Orchestrator image built successfully"
+  fi
+  
+  log_info "Building deployment-agent image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image deployment-agent:1.0.0 \
+    --file dockerfile/deployment-agent.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/deployment-agent-build.log
+  rc5=$?
+  
+  if [[ $rc5 -ne 0 ]]; then
+    log_error "Deployment agent image build failed. Check /tmp/deployment-agent-build.log for details."
+  else
+    log_success "Deployment agent image built successfully"
+  fi
+  
+  log_info "Building training-agent image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image training-agent:1.0.0 \
+    --file dockerfile/training-agent.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/training-agent-build.log
+  rc6=$?
+  
+  if [[ $rc6 -ne 0 ]]; then
+    log_error "Training agent image build failed. Check /tmp/training-agent-build.log for details."
+  else
+    log_success "Training agent image built successfully"
+  fi
+  
+  log_info "Building cost-agent image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image cost-agent:1.0.0 \
+    --file dockerfile/cost-agent.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/cost-agent-build.log
+  rc7=$?
+  
+  if [[ $rc7 -ne 0 ]]; then
+    log_error "Cost agent image build failed. Check /tmp/cost-agent-build.log for details."
+  else
+    log_success "Cost agent image built successfully"
+  fi
+  
+  log_info "Building memory-service image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image memory-service:1.0.0 \
+    --file dockerfile/memory-service.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/memory-service-build.log
+  rc8=$?
+  
+  if [[ $rc8 -ne 0 ]]; then
+    log_error "Memory service image build failed. Check /tmp/memory-service-build.log for details."
+  else
+    log_success "Memory service image built successfully"
+  fi
+  
+  log_info "Building model-catalog image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image model-catalog:1.0.0 \
+    --file dockerfile/model-catalog.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/model-catalog-build.log
+  rc9=$?
+  
+  if [[ $rc9 -ne 0 ]]; then
+    log_error "Model catalog image build failed. Check /tmp/model-catalog-build.log for details."
+  else
+    log_success "Model catalog image built successfully"
+  fi
+  
+  log_info "Building discovery-agent image..."
+  az acr build --registry "${ACR_NAME}" \
+    --image discovery-agent:1.0.0 \
+    --file dockerfile/discovery-agent.Dockerfile \
+    --platform linux/amd64 \
+    . 2>&1 | tee /tmp/discovery-agent-build.log
+  rc10=$?
+  
+  if [[ $rc10 -ne 0 ]]; then
+    log_error "Discovery agent image build failed. Check /tmp/discovery-agent-build.log for details."
+  else
+    log_success "Discovery agent image built successfully"
+  fi
+  
+  set -e
+  if [[ $rc1 -ne 0 || $rc2 -ne 0 || $rc3 -ne 0 || $rc4 -ne 0 || $rc5 -ne 0 || $rc6 -ne 0 || $rc7 -ne 0 || $rc8 -ne 0 || $rc9 -ne 0 || $rc10 -ne 0 ]]; then
+    log_warning "One or more image builds failed; will use chart default images."
+    return 1
+  fi
+  
+  log_success "All 10 images built and pushed successfully"
+  return 0
+}
+
+verify_crds_installed() {
+  log_info "Verifying CRDs are installed..."
+  local crds_missing=false
+  
+  for crd in gpupools gpunodes gpus tensorfusionclusters workloadintelligences; do
+    if ! kubectl get crd ${crd}.tensor-fusion.ai >/dev/null 2>&1; then
+      log_warning "CRD ${crd}.tensor-fusion.ai not found"
+      crds_missing=true
+    fi
+  done
+  
+  if [[ "${crds_missing}" == "true" ]]; then
+    log_info "Installing CRDs from kustomize..."
+    kubectl apply -k config/crd || {
+      log_error "Failed to install CRDs"
+      return 1
+    }
+    sleep 5
+    log_success "CRDs installed"
+  else
+    log_success "All required CRDs are present"
+  fi
+  return 0
 }
 
 deploy_tensorfusion() {
   log_info "Deploying TensorFusion via Helm"
+  
+  # Verify CRDs are installed first
+  verify_crds_installed || {
+    log_error "CRD verification failed. Cannot proceed with Helm deployment."
+    return 1
+  }
+  
   local ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
   # Always configure service endpoints; optionally override images when built
   cat > /tmp/tf-values.yaml <<EOF
+nodeDiscovery:
+  enabled: true
+
 greptime:
   installStandalone: false
   host: greptimedb-standalone.${NS_GREPTIME}.svc.cluster.local
@@ -424,7 +650,9 @@ portkey:
   port: 8787
 EOF
 
-  if [[ "${BUILD_IMAGES}" == "true" ]]; then
+  # Only override images if they were successfully built
+  if [[ -f /tmp/.images-built-successfully ]]; then
+    log_info "Using custom-built images from ACR"
     cat >> /tmp/tf-values.yaml <<EOF
 image:
   repository: ${ACR_LOGIN_SERVER}/tensor-fusion/operator
@@ -436,14 +664,98 @@ nodeDiscovery:
     repository: ${ACR_LOGIN_SERVER}/tensor-fusion/node-discovery
     tag: latest
     pullPolicy: Always
+
+mcpServer:
+  image:
+    repository: ${ACR_LOGIN_SERVER}/mcp-server
+    tag: 1.0.0
+    pullPolicy: Always
+
+orchestrator:
+  image:
+    repository: ${ACR_LOGIN_SERVER}/orchestrator
+    tag: 1.0.0
+    pullPolicy: Always
+
+agents:
+  deploymentAgent:
+    image:
+      repository: ${ACR_LOGIN_SERVER}/deployment-agent
+      tag: 1.0.0
+      pullPolicy: Always
+  trainingAgent:
+    image:
+      repository: ${ACR_LOGIN_SERVER}/training-agent
+      tag: 1.0.0
+      pullPolicy: Always
+  costAgent:
+    image:
+      repository: ${ACR_LOGIN_SERVER}/cost-agent
+      tag: 1.0.0
+      pullPolicy: Always
+
+memoryService:
+  image:
+    repository: ${ACR_LOGIN_SERVER}/memory-service
+    tag: 1.0.0
+    pullPolicy: Always
+
+modelCatalog:
+  image:
+    repository: ${ACR_LOGIN_SERVER}/model-catalog
+    tag: 1.0.0
+    pullPolicy: Always
+
+discoveryAgent:
+  image:
+    repository: ${ACR_LOGIN_SERVER}/discovery-agent
+    tag: 1.0.0
+    pullPolicy: Always
 EOF
+  else
+    log_warning "Using default images from Helm chart (custom images not built)"
   fi
 
-  helm upgrade --install tensor-fusion ./charts/tensor-fusion \
-    -n "${NS_TF}" --create-namespace \
-    --values /tmp/tf-values.yaml \
-    --wait --timeout 15m
-  log_success "TensorFusion deployed"
+  log_info "Helm values file:"
+  cat /tmp/tf-values.yaml
+  
+  # Deploy with Helm, with retry logic
+  local max_attempts=2
+  local attempt=1
+  
+  while [[ $attempt -le $max_attempts ]]; do
+    log_info "Helm deployment attempt ${attempt}/${max_attempts}..."
+    
+    if helm upgrade --install tensor-fusion ./charts/tensor-fusion \
+      -n "${NS_TF}" --create-namespace \
+      --values /tmp/tf-values.yaml \
+      --wait --timeout 15m 2>&1 | tee /tmp/helm-deploy.log; then
+      log_success "TensorFusion deployed successfully"
+      
+      # Wait a bit and verify key components
+      sleep 10
+      log_info "Verifying deployment..."
+      kubectl wait --for=condition=ready pod \
+        -l app.kubernetes.io/name=tensor-fusion \
+        -n "${NS_TF}" --timeout=300s || {
+        log_warning "Some pods may not be ready yet, but continuing..."
+      }
+      
+      return 0
+    else
+      log_warning "Helm deployment attempt ${attempt} failed"
+      if [[ $attempt -lt $max_attempts ]]; then
+        log_info "Retrying in 30 seconds..."
+        sleep 30
+      fi
+      ((attempt++))
+    fi
+  done
+  
+  log_error "Helm deployment failed after ${max_attempts} attempts. Check /tmp/helm-deploy.log"
+  log_info "Checking pod status for debugging:"
+  kubectl get pods -n "${NS_TF}" || true
+  return 1
 }
 
 deploy_sample_crds() {
@@ -465,6 +777,96 @@ deploy_sample_crds() {
   log_success "Sample CRDs deployed"
 }
 
+verify_gpu_nodes() {
+  log_info "Verifying GPU nodes..."
+  
+  local gpu_nodes=$(kubectl get nodes -l pool=gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  
+  if [ "$gpu_nodes" -gt 0 ]; then
+    log_success "GPU nodes available: $gpu_nodes"
+    
+    # Check if GPUs are detected
+    local gpu_count=0
+    for node in $(kubectl get nodes -l pool=gpu -o name 2>/dev/null); do
+      local node_name=$(echo "$node" | cut -d'/' -f2)
+      local gpus=$(kubectl get node "$node_name" -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null || echo "0")
+      if [ "$gpus" != "0" ] && [ -n "$gpus" ]; then
+        log_success "Node $node_name: $gpus GPU(s) detected"
+        ((gpu_count+=gpus))
+      else
+        log_warning "Node $node_name: GPUs not yet detected (driver may still be installing)"
+      fi
+    done
+    
+    if [ "$gpu_count" -gt 0 ]; then
+      log_success "Total GPUs available in cluster: $gpu_count"
+      # Bootstrap GPUNode resources for node-discovery
+      bootstrap_gpu_nodes
+    else
+      log_warning "GPU nodes exist but GPUs not yet detected. GPU operator may still be installing drivers."
+      log_info "Check GPU operator status: kubectl get pods -n gpu-operator"
+    fi
+  else
+    log_warning "No GPU nodes found (autoscaler may have scaled to 0, or quota was insufficient)"
+    log_info "If you have GPU quota, you can add nodes with: ./add-gpu-node.sh"
+  fi
+}
+
+bootstrap_gpu_nodes() {
+  log_info "Bootstrapping GPUNode resources for node-discovery..."
+  
+  # Get default-pool UID
+  local pool_uid=$(kubectl get gpupool default-pool -o jsonpath='{.metadata.uid}' 2>/dev/null)
+  if [ -z "$pool_uid" ]; then
+    log_warning "GPUPool default-pool not found, skipping GPUNode bootstrap"
+    return
+  fi
+  
+  # Create GPUNode for each GPU node
+  for node in $(kubectl get nodes -l pool=gpu -o name 2>/dev/null); do
+    local node_name=$(echo "$node" | cut -d'/' -f2)
+    
+    # Check if GPUNode already exists
+    if kubectl get gpunode "$node_name" >/dev/null 2>&1; then
+      log_info "GPUNode $node_name already exists"
+      continue
+    fi
+    
+    log_info "Creating GPUNode resource for $node_name..."
+    cat <<EOF | kubectl apply -f - >/dev/null 2>&1
+apiVersion: tensor-fusion.ai/v1
+kind: GPUNode
+metadata:
+  name: ${node_name}
+  labels:
+    tensor-fusion.ai/pool: default-pool
+  ownerReferences:
+  - apiVersion: tensor-fusion.ai/v1
+    kind: GPUPool
+    name: default-pool
+    uid: ${pool_uid}
+    controller: false
+    blockOwnerDeletion: false
+status:
+  phase: Pending
+  totalTFlops: "0"
+  totalVRAM: "0"
+  totalGPUs: 0
+  managedGPUs: 0
+EOF
+    
+    if [ $? -eq 0 ]; then
+      log_success "GPUNode $node_name created"
+      
+      # Restart node-discovery pod to trigger GPU detection
+      kubectl delete pod -n tensor-fusion-sys -l app=node-discovery --grace-period=0 --force >/dev/null 2>&1 || true
+      log_info "Node-discovery pod restarted to detect GPUs"
+    else
+      log_warning "Failed to create GPUNode $node_name"
+    fi
+  done
+}
+
 print_summary() {
   echo ""
   echo "╔════════════════════════════════════════════════════════════════╗"
@@ -474,6 +876,11 @@ print_summary() {
   echo "Resource Group: ${RESOURCE_GROUP}"
   echo "AKS: ${AKS_CLUSTER}  ACR: ${ACR_NAME}"
   echo "Namespaces: ${NS_TF}, ${NS_STORAGE}, ${NS_OBS}, ${NS_QDRANT}, ${NS_GREPTIME}, ${NS_PORTKEY}"
+  echo ""
+  log_info "Cluster nodes:"
+  kubectl get nodes -o wide || true
+  echo ""
+  verify_gpu_nodes
   echo ""
   log_info "TensorFusion pods:"; kubectl get pods -n "${NS_TF}" || true
   log_info "Observability pods:"; kubectl get pods -n "${NS_OBS}" || true
@@ -492,6 +899,9 @@ print_summary() {
 }
 
 main() {
+  # Clean up any previous run artifacts
+  rm -f /tmp/.images-built-successfully /tmp/operator-build.log /tmp/node-discovery-build.log /tmp/helm-deploy.log
+  
   check_prereqs
   set_subscription
   create_rg
@@ -506,18 +916,36 @@ main() {
   deploy_observability
   deploy_portkey
   wait_ready
-  if ! build_and_push_images; then
+  
+  # Build and push images
+  if build_and_push_images; then
+    touch /tmp/.images-built-successfully
+    log_success "Custom images will be used in deployment"
+  else
+    log_warning "Custom image build failed or skipped - using default images"
     BUILD_IMAGES=false
   fi
-  deploy_tensorfusion
+  
+  # Deploy TensorFusion
+  if ! deploy_tensorfusion; then
+    log_error "TensorFusion deployment failed!"
+    log_info "You can try to fix issues and re-run: helm upgrade --install tensor-fusion ./charts/tensor-fusion -n ${NS_TF} --values /tmp/tf-values.yaml"
+    log_info "Or check the logs with: kubectl logs -n ${NS_TF} -l app.kubernetes.io/name=tensor-fusion"
+    exit 1
+  fi
+  
   # Optional: apply enhanced RBAC if provided
   if [[ -f "rbac-enhanced.yaml" ]]; then
     log_info "Applying enhanced RBAC"
-    kubectl apply -f rbac-enhanced.yaml || true
+    kubectl apply -f rbac-enhanced.yaml || log_warning "Enhanced RBAC failed to apply"
   fi
+  
   # Deploy sample CRDs for testing
   deploy_sample_crds
+  
   print_summary
+  
+  log_info "Deployment completed! Check status with: kubectl get pods -A"
 }
 
 main "$@"

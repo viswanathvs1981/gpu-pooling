@@ -1,0 +1,104 @@
+{{- if .Values.modelCatalog.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-model-catalog
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: model-catalog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-model-catalog
+rules:
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["modelcatalogs", "trainedmodels"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["modelcatalogs/status", "trainedmodels/status"]
+  verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-model-catalog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tensor-fusion.fullname" . }}-model-catalog
+subjects:
+- kind: ServiceAccount
+  name: {{ include "tensor-fusion.fullname" . }}-model-catalog
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tensor-fusion-model-catalog
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: model-catalog
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8095
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "tensor-fusion.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: model-catalog
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-model-catalog
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: model-catalog
+spec:
+  replicas: {{ .Values.modelCatalog.replicas }}
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: model-catalog
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: model-catalog
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-model-catalog
+      containers:
+      - name: model-catalog
+        image: "{{ .Values.modelCatalog.image.repository }}:{{ .Values.modelCatalog.image.tag }}"
+        imagePullPolicy: {{ .Values.modelCatalog.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8095
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8095"
+        args:
+        - --port=8095
+        resources:
+          {{- toYaml .Values.modelCatalog.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+{{- end }}
+

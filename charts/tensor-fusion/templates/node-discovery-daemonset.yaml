@@ -1,0 +1,67 @@
+{{- if .Values.nodeDiscovery.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-node-discovery
+  namespace: {{ include "tensor-fusion.namespace" . }}
+  labels:
+    app: node-discovery
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: node-discovery
+      app.kubernetes.io/name: tensor-fusion
+      app.kubernetes.io/component: node-discovery
+  template:
+    metadata:
+      labels:
+        app: node-discovery
+        app.kubernetes.io/name: tensor-fusion
+        app.kubernetes.io/component: node-discovery
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-node-discovery
+      hostNetwork: true
+      hostPID: true
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - name: node-discovery
+        image: "{{ .Values.nodeDiscovery.image.repository }}:{{ .Values.nodeDiscovery.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.nodeDiscovery.image.pullPolicy }}
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_DISCOVERY_REPORT_GPU_NODE
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: all
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: compute,utility
+        volumeMounts:
+        - name: gpu-info-config
+          mountPath: /etc/tensor-fusion
+          readOnly: true
+        securityContext:
+          privileged: true
+        resources:
+          {{- toYaml .Values.nodeDiscovery.resources | nindent 10 }}
+      volumes:
+      - name: gpu-info-config
+        configMap:
+          name: {{ include "tensor-fusion.fullname" . }}-public-gpu-info
+          items:
+          - key: gpu-info.yaml
+            path: gpu-info.yaml
+{{- end }}
+
