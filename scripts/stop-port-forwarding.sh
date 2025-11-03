@@ -11,3 +11,4 @@ pkill -f "kubectl port-forward" || echo "No port-forward processes found"
 rm -f /tmp/port-forward-*.pid
 
 echo "✅ All port forwarding stopped"
+

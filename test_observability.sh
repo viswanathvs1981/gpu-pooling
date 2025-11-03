@@ -65,3 +65,4 @@ echo "# Monitoring services remain running"
 
 echo ""
 echo "✅ OBSERVABILITY & MONITORING TEST COMPLETE"
+

@@ -39,3 +39,4 @@ echo "• The kubectl commands it runs"
 echo "• Real output from your cluster"
 echo "• Pass/fail results"
 echo "• Cleanup instructions"
+

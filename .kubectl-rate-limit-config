@@ -19,3 +19,4 @@ echo "✅ Kubernetes rate limits increased:"
 echo "   • kubectl QPS: $KUBECTL_CLIENT_QPS"
 echo "   • kubectl Burst: $KUBECTL_CLIENT_BURST"
 
+

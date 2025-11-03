@@ -226,3 +226,4 @@ echo "  2. Wait 3 minutes and run ./deploy-platform.sh"
 echo "  3. For production: Upgrade to AKS Standard tier"
 echo ""
 
+
