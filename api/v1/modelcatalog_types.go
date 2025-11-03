@@ -45,14 +45,29 @@ type ModelCatalogSpec struct {
 	TrainingConfig TrainingConfig `json:"trainingConfig"`
 }
 
+// LoRAConfig defines LoRA (Low-Rank Adaptation) configuration
+type LoRAConfig struct {
+	// Rank is the LoRA rank (typically 4-64)
+	Rank int `json:"rank"`
+
+	// Alpha is the LoRA alpha parameter
+	Alpha float64 `json:"alpha"`
+
+	// TargetModules are the modules to apply LoRA to
+	TargetModules []string `json:"targetModules"`
+
+	// DropoutRate is the LoRA dropout rate
+	DropoutRate float64 `json:"dropoutRate,omitempty"`
+}
+
 // TrainingConfig defines training parameters
 type TrainingConfig struct {
-	BatchSize        int         `json:"batchSize"`
-	LearningRate     float64     `json:"learningRate"`
-	Epochs           int         `json:"epochs"`
-	LoRAConfig       LoRAConfig  `json:"loraConfig"`
-	QuantizationBits int         `json:"quantizationBits"` // 4, 8, or 16
-	GradientAccum    int         `json:"gradientAccum"`
+	BatchSize        int        `json:"batchSize"`
+	LearningRate     float64    `json:"learningRate"`
+	Epochs           int        `json:"epochs"`
+	LoRAConfig       LoRAConfig `json:"loraConfig"`
+	QuantizationBits int        `json:"quantizationBits"` // 4, 8, or 16
+	GradientAccum    int        `json:"gradientAccum"`
 }
 
 // +kubebuilder:object:root=true

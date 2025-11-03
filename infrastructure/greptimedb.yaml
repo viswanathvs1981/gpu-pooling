@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: greptimedb
+  namespace: tensor-fusion-sys
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: greptimedb
+  template:
+    metadata:
+      labels:
+        app: greptimedb
+    spec:
+      containers:
+      - name: greptimedb
+        image: greptime/greptimedb:latest
+        command:
+        - greptime
+        - standalone
+        - start
+        ports:
+        - containerPort: 4000
+          name: http
+        - containerPort: 4001
+          name: grpc
+        - containerPort: 4002
+          name: mysql
+        - containerPort: 4003
+          name: postgres
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: greptimedb-storage
+          mountPath: /tmp/greptimedb
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 4000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 4000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        env:
+        - name: GREPTIME_DB_HOME
+          value: "/tmp/greptimedb"
+      volumes:
+      - name: greptimedb-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: greptimedb
+  namespace: tensor-fusion-sys
+spec:
+  selector:
+    app: greptimedb
+  ports:
+  - name: http
+    port: 4000
+    targetPort: 4000
+  - name: grpc
+    port: 4001
+    targetPort: 4001
+  - name: mysql
+    port: 4002
+    targetPort: 4002
+  - name: postgres
+    port: 4003
+    targetPort: 4003
+  type: ClusterIP

@@ -2,11 +2,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	tfv1 "github.com/NexusGPU/tensor-fusion/api/v1"
 	"github.com/NexusGPU/tensor-fusion/internal/intelligence/ml"
 	"github.com/NexusGPU/tensor-fusion/internal/intelligence/vectordb"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,9 +40,19 @@ func (r *WorkloadIntelligenceReconciler) Reconcile(ctx context.Context, req ctrl
 
 	// Initialize clients if needed
 	if r.VectorDBClient == nil {
-		qdrantURL := "http://qdrant.qdrant.svc.cluster.local:6333"
+		// Use config from spec or default
+		config := wi.Spec.VectorDBConfig
+		if config == nil {
+			config = &tfv1.VectorDBConfig{
+				Type:     tfv1.VectorDBTypeQdrant,
+				Endpoint: "http://qdrant.qdrant.svc.cluster.local:6333",
+				CollectionName: "tensor-fusion-workloads",
+				VectorDimension: 768,
+			}
+		}
+		
 		var err error
-		r.VectorDBClient, err = vectordb.NewQdrantClient(qdrantURL)
+		r.VectorDBClient, err = vectordb.NewQdrantClient(config)
 		if err != nil {
 			log.Error(err, "failed to initialize VectorDB client")
 			return ctrl.Result{}, err
@@ -52,39 +64,52 @@ func (r *WorkloadIntelligenceReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	// Analyze workload patterns
-	if wi.Spec.Enabled {
+	if wi.Spec.EnablePrediction {
 		// Get workload history
 		workloads := &tfv1.TensorFusionWorkloadList{}
-		if err := r.List(ctx, workloads, client.InNamespace(wi.Namespace)); err != nil {
+		if err := r.List(ctx, workloads); err != nil {
 			return ctrl.Result{}, err
 		}
 
-		// Perform analysis
-		prediction, err := r.WorkloadProfiler.PredictResources(ctx, wi.Spec.WorkloadName)
-		if err != nil {
-			log.Error(err, "failed to predict resources")
-			wi.Status.Phase = "Failed"
-			wi.Status.LastError = err.Error()
-		} else {
-			wi.Status.Phase = "Active"
-			wi.Status.Predictions = &tfv1.ResourcePrediction{
-				RecommendedVGPU: prediction.VGPU,
-				RecommendedVRAM: prediction.VRAM,
-				Confidence:      prediction.Confidence,
+		// Perform analysis for each workload (limit to last 10 for status)
+		count := 0
+		for _, workload := range workloads.Items {
+			if count >= 10 {
+				break
 			}
-			wi.Status.LastPrediction = metav1.Now()
+			
+			prediction, err := r.WorkloadProfiler.PredictResources(ctx, workload.Name)
+			if err != nil {
+				log.Error(err, "failed to predict resources", "workload", workload.Name)
+				continue
+			}
+			
+			// Store recommendation in status with proper type conversions
+			recommendation := tfv1.WorkloadGPURecommendation{
+				WorkloadID: workload.Name,
+				RecommendedGPU: fmt.Sprintf("%.2f vGPU", prediction.VGPU),
+				RecommendedVRAM: *resource.NewQuantity(prediction.VRAM, resource.BinarySI),
+				ConfidenceScore: fmt.Sprintf("%.2f", prediction.Confidence),
+				Timestamp: metav1.Now(),
+			}
+			wi.Status.RecentRecommendations = append(wi.Status.RecentRecommendations, recommendation)
+			count++
 		}
+		
+		wi.Status.Phase = tfv1.WorkloadIntelligencePhaseReady
 	} else {
-		wi.Status.Phase = "Disabled"
+		wi.Status.Phase = tfv1.WorkloadIntelligencePhasePending
 	}
 
 	// Update status
+	now := metav1.Now()
+	wi.Status.LastUpdated = &now
 	if err := r.Status().Update(ctx, wi); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Requeue periodically
-	return ctrl.Result{RequeueAfter: time.Duration(wi.Spec.AnalysisInterval) * time.Second}, nil
+	// Requeue periodically (default: 5 minutes)
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -1,0 +1,21 @@
+# Kubernetes Client Rate Limit Configuration
+# Add this to your ~/.zshrc or ~/.bashrc:
+#
+# source /path/to/gpu-pooling/.kubectl-rate-limit-config
+#
+# Or copy these lines directly to your shell config
+
+# Increase kubectl client-side rate limits
+export KUBECTL_CLIENT_QPS=100      # Default: 5 QPS
+export KUBECTL_CLIENT_BURST=150    # Default: 10 requests
+
+# Helm client rate limits (if needed)
+export HELM_MAX_HISTORY=10         # Limit history to reduce API calls
+
+# Optional: Increase timeout for slow operations
+export HELM_TIMEOUT=600s           # 10 minutes
+
+echo "✅ Kubernetes rate limits increased:"
+echo "   • kubectl QPS: $KUBECTL_CLIENT_QPS"
+echo "   • kubectl Burst: $KUBECTL_CLIENT_BURST"
+

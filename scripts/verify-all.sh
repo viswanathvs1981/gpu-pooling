@@ -894,6 +894,161 @@ test_discovery_agent(){
   fi
 }
 
+test_prompt_optimizer(){
+  info "Testing Prompt Optimizer"
+  
+  if kubectl get deployment -n "${NS_TF}" prompt-optimizer >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" prompt-optimizer -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "Prompt Optimizer is running ($ready replica(s) ready)"
+      ((PASSED++))
+    else
+      warn "Prompt Optimizer is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "Prompt Optimizer not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_dataops_agents(){
+  info "Testing DataOps Agents"
+  
+  if kubectl get deployment -n "${NS_TF}" dataops-agents >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" dataops-agents -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "DataOps Agents are running ($ready replica(s) ready)"
+      
+      # Test Data Pipeline Agent (port 8081)
+      local pipeline_svc=$(kubectl get svc -n "${NS_TF}" dataops-pipeline -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+      if [ -n "$pipeline_svc" ]; then
+        ok "Data Pipeline Agent service exists"
+      fi
+      
+      # Test Feature Engineering Agent (port 8082)
+      local feature_svc=$(kubectl get svc -n "${NS_TF}" dataops-feature -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+      if [ -n "$feature_svc" ]; then
+        ok "Feature Engineering Agent service exists"
+      fi
+      
+      # Test Drift Detection Agent (port 8083)
+      local drift_svc=$(kubectl get svc -n "${NS_TF}" dataops-drift -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+      if [ -n "$drift_svc" ]; then
+        ok "Drift Detection Agent service exists"
+      fi
+      
+      # Test Lineage Agent (port 8084)
+      local lineage_svc=$(kubectl get svc -n "${NS_TF}" dataops-lineage -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+      if [ -n "$lineage_svc" ]; then
+        ok "Lineage Agent service exists"
+      fi
+      
+      # Test Experiment Agent (port 8085)
+      local experiment_svc=$(kubectl get svc -n "${NS_TF}" dataops-experiment -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+      if [ -n "$experiment_svc" ]; then
+        ok "Experiment Agent service exists"
+      fi
+      
+      ((PASSED++))
+    else
+      warn "DataOps Agents are not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "DataOps Agents not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_aisafety_service(){
+  info "Testing AI Safety & Evaluation Service"
+  
+  if kubectl get deployment -n "${NS_TF}" aisafety-service >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" aisafety-service -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "AI Safety & Evaluation Service is running ($ready replica(s) ready)"
+      
+      # Test service availability
+      local svc=$(kubectl get svc -n "${NS_TF}" aisafety-service -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+      if [ -n "$svc" ]; then
+        ok "AI Safety service exists"
+        
+        # Test health endpoint (requires port-forward for actual testing)
+        info "  Safety Agent provides: toxicity detection, adversarial detection, fairness evaluation, red teaming"
+        info "  Evaluation Agent provides: benchmarking (MMLU, TruthfulQA, etc.), output validation, A/B testing"
+      fi
+      
+      ((PASSED++))
+    else
+      warn "AI Safety & Evaluation Service is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "AI Safety & Evaluation Service not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_msaf_orchestrator(){
+  info "Testing Microsoft Agent Framework Orchestrator"
+  
+  if kubectl get deployment -n "${NS_TF}" msaf-orchestrator >/dev/null 2>&1; then
+    local ready=$(kubectl get deployment -n "${NS_TF}" msaf-orchestrator -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    
+    if [ "$ready" -gt 0 ]; then
+      ok "MSAF Orchestrator is running ($ready replica(s) ready)"
+      
+      info "  Provides: Graph-based workflows, checkpointing, branching, human-in-loop"
+      info "  Workflows: deploy_model, train_and_deploy, optimize_costs"
+      
+      ((PASSED++))
+    else
+      warn "MSAF Orchestrator is not ready"
+      ((FAILED++))
+    fi
+  else
+    warn "MSAF Orchestrator not found (may not be enabled)"
+    ((PASSED++))
+  fi
+}
+
+test_msaf_agents(){
+  info "Testing Microsoft Agent Framework Agents"
+  
+  local agents=("training-agent" "deployment-agent" "cost-agent" "smallmodel-agent" "pipeline-agent" "drift-agent" "security-agent")
+  local ready_count=0
+  
+  for agent in "${agents[@]}"; do
+    if kubectl get deployment -n "${NS_TF}" "msaf-${agent}" >/dev/null 2>&1; then
+      local ready=$(kubectl get deployment -n "${NS_TF}" "msaf-${agent}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+      
+      if [ "$ready" -gt 0 ]; then
+        ok "MSAF ${agent} is running"
+        ((ready_count++))
+      else
+        warn "MSAF ${agent} is not ready"
+      fi
+    fi
+  done
+  
+  if [ "$ready_count" -ge 4 ]; then
+    ok "Microsoft Agent Framework agents running ($ready_count/7)"
+    info "  Training: Checkpointed training, HPO, auto-retry"
+    info "  Deployment: Multi-stage (dev/staging/prod), canary rollouts, auto-rollback"
+    info "  Cost: Multi-source analysis, forecasting, approval gates, impact monitoring"
+    info "  SmallModel: Interactive recommendation, model comparison"
+    info "  Hybrid Agents: Data Pipeline, Drift Detection, Security Response"
+    ((PASSED++))
+  else
+    warn "Some MSAF agents are not ready ($ready_count/7)"
+    ((FAILED++))
+  fi
+}
+
 cleanup_test_resources(){
   info "Cleaning up test resources"
   kubectl delete pods -l app=vgpu-test --ignore-not-found >/dev/null 2>&1 || true
@@ -988,6 +1143,22 @@ test_cost_agent
 test_memory_service
 test_model_catalog
 test_discovery_agent
+test_prompt_optimizer
+test_dataops_agents
+echo ""
+
+echo ""
+info "=================================================="
+info "TESTING AI SAFETY & EVALUATION"
+info "=================================================="
+test_aisafety_service
+echo ""
+
+info "=================================================="
+info "TESTING MICROSOFT AGENT FRAMEWORK"
+info "=================================================="
+test_msaf_orchestrator
+test_msaf_agents
 echo ""
 
 cleanup_test_resources

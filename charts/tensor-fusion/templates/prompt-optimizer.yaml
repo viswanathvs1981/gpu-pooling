@@ -1,0 +1,72 @@
+{{- if .Values.promptOptimizer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prompt-optimizer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: tensor-fusion
+    app.kubernetes.io/component: prompt-optimizer
+spec:
+  replicas: {{ .Values.promptOptimizer.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tensor-fusion
+      app.kubernetes.io/component: prompt-optimizer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tensor-fusion
+        app.kubernetes.io/component: prompt-optimizer
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.serviceAccountName" . }}
+      containers:
+      - name: prompt-optimizer
+        image: "{{ .Values.promptOptimizer.image.repository }}:{{ .Values.promptOptimizer.image.tag }}"
+        imagePullPolicy: {{ .Values.promptOptimizer.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis:6379"
+        - name: ENABLE_A2A
+          value: "{{ .Values.promptOptimizer.enableA2A }}"
+        - name: HTTP_ADDR
+          value: ":8080"
+        resources:
+          {{- toYaml .Values.promptOptimizer.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prompt-optimizer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: tensor-fusion
+    app.kubernetes.io/component: prompt-optimizer
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: tensor-fusion
+    app.kubernetes.io/component: prompt-optimizer
+{{- end }}
+

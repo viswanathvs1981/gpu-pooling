@@ -36,31 +36,27 @@ func (r *LLMRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Initialize RoutingController if needed
 	if r.RoutingController == nil {
-		// Get Portkey configuration from environment or config
-		portkeyURL := "http://portkey-gateway.portkey.svc.cluster.local:8787"
-		portkeyKey := "default-key"
-		r.RoutingController = portkey.NewRoutingController(portkeyURL, portkeyKey)
+		log.Info("RoutingController not initialized, skipping route sync")
+		route.Status.Phase = tfv1.LLMRoutePhasePending
+		now := metav1.Now()
+		route.Status.LastUpdated = &now
+		if err := r.Status().Update(ctx, route); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	// Convert TensorFusion route to Portkey format
-	portkeyConfig := &portkey.RouteConfig{
-		Name:     route.Name,
-		Strategy: route.Spec.Strategy,
-		Targets:  convertTargets(route.Spec.Targets),
-	}
-
-	// Create or update route in Portkey
-	if err := r.RoutingController.CreateRoute(ctx, portkeyConfig); err != nil {
-		log.Error(err, "failed to create/update route in Portkey")
-		route.Status.Phase = "Failed"
-		route.Status.Reason = err.Error()
+	// Sync route with Portkey
+	if err := r.RoutingController.SyncRoute(ctx, route); err != nil {
+		log.Error(err, "failed to sync route with Portkey")
+		route.Status.Phase = tfv1.LLMRoutePhaseError
 	} else {
-		route.Status.Phase = "Active"
-		route.Status.Reason = "Route configured successfully"
+		route.Status.Phase = tfv1.LLMRoutePhaseActive
 	}
 
 	// Update status
-	route.Status.LastUpdated = metav1.Now()
+	now := metav1.Now()
+	route.Status.LastUpdated = &now
 	if err := r.Status().Update(ctx, route); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -75,16 +71,4 @@ func (r *LLMRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&tfv1.LLMRoute{}).
 		Named("llmroute").
 		Complete(r)
-}
-
-func convertTargets(tfTargets []tfv1.LLMTarget) []portkey.TargetConfig {
-	targets := make([]portkey.TargetConfig, len(tfTargets))
-	for i, t := range tfTargets {
-		targets[i] = portkey.TargetConfig{
-			Provider:   t.Provider,
-			Weight:     int(t.Weight),
-			VirtualKey: t.VirtualKey,
-		}
-	}
-	return targets
 }

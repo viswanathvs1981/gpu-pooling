@@ -1,0 +1,70 @@
+{{- if .Values.discoveryAgent.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: discovery-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["llmendpoints"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["llmendpoints/status"]
+  verbs: ["get", "update", "patch"]
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["llmroutes"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+subjects:
+- kind: ServiceAccount
+  name: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: discovery-agent
+spec:
+  replicas: {{ .Values.discoveryAgent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: discovery-agent
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: discovery-agent
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-discovery-agent
+      containers:
+      - name: discovery-agent
+        image: "{{ .Values.discoveryAgent.image.repository }}:{{ .Values.discoveryAgent.image.tag }}"
+        imagePullPolicy: {{ .Values.discoveryAgent.image.pullPolicy }}
+        resources:
+          {{- toYaml .Values.discoveryAgent.resources | nindent 10 }}
+{{- end }}
+

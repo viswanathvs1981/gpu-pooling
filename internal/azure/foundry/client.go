@@ -24,6 +24,9 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	tfv1 "github.com/NexusGPU/tensor-fusion/api/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // Client handles Azure AI Foundry API interactions
@@ -75,11 +78,32 @@ type Usage struct {
 
 // ModelDeployment represents an Azure model deployment
 type ModelDeployment struct {
-	Name       string            `json:"name"`
-	Model      string            `json:"model"`
-	Status     string            `json:"status"`
-	Scale      map[string]int    `json:"scale,omitempty"`
-	Properties map[string]string `json:"properties,omitempty"`
+	Name              string            `json:"name"`
+	Model             string            `json:"model"`
+	Status            string            `json:"status"`
+	Scale             map[string]int    `json:"scale,omitempty"`
+	Properties        map[string]string `json:"properties,omitempty"`
+	
+	// Additional fields for model selection
+	EstimatedTFlops   float64           `json:"estimatedTFlops,omitempty"`
+	EstimatedVRAM     float64           `json:"estimatedVRAM,omitempty"`
+	InputCostPer1K    float64           `json:"inputCostPer1K,omitempty"`
+	OutputCostPer1K   float64           `json:"outputCostPer1K,omitempty"`
+	Region            string            `json:"region,omitempty"`
+	ModelFamily       string            `json:"modelFamily,omitempty"`
+	AverageLatencyMs  float64           `json:"averageLatencyMs,omitempty"`
+}
+
+// Type aliases for compatibility
+type FoundryClient = Client
+type FoundryModel = ModelDeployment
+type ModelMetrics struct {
+	RequestsPerSecond float64
+	TokensPerSecond   float64
+	ErrorRate         float64
+	AverageLatency    time.Duration
+	AverageLatencyMs  float64
+	QueueDepth        int
 }
 
 // NewClient creates a new Azure AI Foundry client
@@ -92,6 +116,11 @@ func NewClient(endpoint, apiKey, apiVersion string) *Client {
 			Timeout: 60 * time.Second,
 		},
 	}
+}
+
+// NewFoundryClient is an alias for NewClient
+func NewFoundryClient(endpoint, apiKey, apiVersion string) *FoundryClient {
+	return NewClient(endpoint, apiKey, apiVersion)
 }
 
 // CreateChatCompletion sends a chat completion request
@@ -190,4 +219,43 @@ func (c *Client) GetDeployment(ctx context.Context, deploymentName string) (*Mod
 	}
 
 	return &deployment, nil
+}
+
+// ListAvailableModels lists all available models in the Foundry catalog
+func (c *Client) ListAvailableModels(ctx context.Context) ([]FoundryModel, error) {
+	// Placeholder: In production, this would query Azure AI Foundry model catalog
+	return c.ListDeployments(ctx)
+}
+
+// CheckModelAvailability checks if a specific model is available
+func (c *Client) CheckModelAvailability(ctx context.Context, modelName string) (bool, error) {
+	// Placeholder: In production, this would check model availability in Foundry
+	deployment, err := c.GetDeployment(ctx, modelName)
+	if err != nil {
+		return false, nil
+	}
+	return deployment.Status == "Succeeded", nil
+}
+
+// GetModelMetrics retrieves metrics for a specific model deployment
+func (c *Client) GetModelMetrics(ctx context.Context, modelName string) (*ModelMetrics, error) {
+	// Placeholder: In production, this would fetch real metrics from Azure Monitor
+	return &ModelMetrics{
+		RequestsPerSecond: 10.0,
+		TokensPerSecond:   500.0,
+		ErrorRate:         0.01,
+		AverageLatency:    100 * time.Millisecond,
+		AverageLatencyMs:  100.0,
+		QueueDepth:        5,
+	}, nil
+}
+
+// ConvertToAzureGPUModel converts a Foundry model to AzureGPUModel
+func ConvertToAzureGPUModel(model FoundryModel) tfv1.AzureGPUModel {
+	return tfv1.AzureGPUModel{
+		ModelName: model.Name,
+		SKU:       model.Model,
+		TFlops:    resource.MustParse("100"),    // Placeholder
+		VRAM:      resource.MustParse("24Gi"),   // Placeholder
+	}
 }

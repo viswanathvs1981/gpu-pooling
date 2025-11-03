@@ -9,6 +9,7 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 namespaceOverride: ""
+namespace: "tensor-fusion-sys"
 
 #This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
 serviceAccount:
@@ -26,6 +27,9 @@ controller:
   replicaCount: 1
 
   nvidiaOperatorProgressiveMigration: false
+
+  autoScale:
+    enabled: true
 
   # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
   image:
@@ -144,6 +148,7 @@ cloudVendorCredentials:
   secretKey: "dummy"
 
 portkey:
+  enabled: true
   image:
     repository: docker.io/portkeyai/gateway
     tag: latest
@@ -518,7 +523,7 @@ dynamicConfig:
 nodeDiscovery:
   enabled: true
   image:
-    repository: tensorfusionacr88742.azurecr.io/node-discovery
+    repository: nexusaiacr67655f.azurecr.io/node-discovery
     tag: "1.43.4-v3"
     pullPolicy: Always
 
@@ -527,7 +532,7 @@ mcpServer:
   enabled: true
   replicas: 2
   image:
-    repository: tensorfusionacr88742.azurecr.io/mcp-server
+    repository: nexusaiacr67655f.azurecr.io/mcp-server
     tag: "1.0.0"
     pullPolicy: Always
   resources:
@@ -543,7 +548,7 @@ orchestrator:
   enabled: true
   replicas: 1
   image:
-    repository: tensorfusionacr88742.azurecr.io/orchestrator
+    repository: nexusaiacr67655f.azurecr.io/orchestrator
     tag: "1.0.0"
     pullPolicy: Always
   resources:
@@ -559,7 +564,7 @@ agents:
   enabled: true
   deploymentAgent:
     image:
-      repository: tensorfusionacr88742.azurecr.io/deployment-agent
+      repository: nexusaiacr67655f.azurecr.io/deployment-agent
       tag: "1.0.0"
       pullPolicy: Always
     resources:
@@ -571,7 +576,7 @@ agents:
         cpu: 500m
   trainingAgent:
     image:
-      repository: tensorfusionacr88742.azurecr.io/training-agent
+      repository: nexusaiacr67655f.azurecr.io/training-agent
       tag: "1.0.0"
       pullPolicy: Always
     resources:
@@ -583,7 +588,7 @@ agents:
         cpu: 500m
   costAgent:
     image:
-      repository: tensorfusionacr88742.azurecr.io/cost-agent
+      repository: nexusaiacr67655f.azurecr.io/cost-agent
       tag: "1.0.0"
       pullPolicy: Always
     resources:
@@ -599,7 +604,7 @@ memoryService:
   enabled: true
   replicas: 2
   image:
-    repository: tensorfusionacr88742.azurecr.io/memory-service
+    repository: nexusaiacr67655f.azurecr.io/memory-service
     tag: "1.0.0"
     pullPolicy: Always
   resources:
@@ -615,7 +620,7 @@ modelCatalog:
   enabled: true
   replicas: 1
   image:
-    repository: tensorfusionacr88742.azurecr.io/model-catalog
+    repository: nexusaiacr67655f.azurecr.io/model-catalog
     tag: "1.0.0"
     pullPolicy: Always
   resources:
@@ -634,7 +639,7 @@ discoveryAgent:
   enabled: true
   replicas: 1
   image:
-    repository: tensorfusionacr88742.azurecr.io/discovery-agent
+    repository: nexusaiacr67655f.azurecr.io/discovery-agent
     tag: "1.0.0"
     pullPolicy: Always
   resources:
@@ -663,3 +668,146 @@ discoveryAgent:
     limits:
       cpu: 500m
       memory: 512Mi
+
+# Prompt Optimizer Configuration
+promptOptimizer:
+  enabled: true
+  replicas: 1
+  image:
+    repository: nexusaiacr67655f.azurecr.io/prompt-optimizer
+    tag: "1.0.0"
+    pullPolicy: Always
+  enableA2A: true
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+# DataOps Agents Configuration
+dataopsAgents:
+  enabled: true
+  replicas: 1
+  image:
+    repository: nexusaiacr67655f.azurecr.io/dataops-agents
+    tag: "1.0.0"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 200m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+
+# AI Safety & Evaluation Service Configuration
+aiSafety:
+  enabled: true
+  replicas: 2
+  image:
+    repository: nexusaiacr67655f.azurecr.io/aisafety-service
+    tag: "1.0.0"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+# Microsoft Agent Framework - Advanced Workflow Orchestrator
+msafOrchestrator:
+  enabled: true
+  replicas: 2
+  image:
+    repository: nexusaiacr67655f.azurecr.io/python-agents
+    tag: "1.0.0"
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2000m
+
+# Microsoft Agent Framework - Workflow Agents
+msafAgents:
+  enabled: true
+  image:
+    repository: nexusaiacr67655f.azurecr.io/python-agents
+    tag: "1.0.0"
+    pullPolicy: Always
+  
+  training:
+    replicas: 1
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 1000m
+      limits:
+        memory: 4Gi
+        cpu: 4000m
+  
+  deployment:
+    replicas: 2
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 2000m
+  
+  cost:
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+  
+  smallmodel:
+    replicas: 1
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 2000m
+  
+  pipeline:
+    replicas: 2
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 2000m
+  
+  drift:
+    replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 200m
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+  
+  security:
+    replicas: 2
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 300m
+      limits:
+        memory: 1Gi
+        cpu: 1500m

@@ -44,7 +44,10 @@ spec:
         - -metrics-bind-address
         - :9000
         - -leader-elect
+{{- $autoScale := .Values.controller.autoScale.enabled }}
+{{- if or (not (kindIs "bool" $autoScale)) $autoScale }}
         - -enable-auto-scale
+{{- end }}
         - -enable-alert
         - -health-probe-bind-address
         - :8081

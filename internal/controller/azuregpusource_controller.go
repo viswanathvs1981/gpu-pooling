@@ -35,18 +35,18 @@ func (r *AzureGPUSourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Initialize Foundry client if needed
-	if r.FoundryClient == nil && source.Spec.Enabled {
+	if r.FoundryClient == nil && source.Spec.Enabled != nil && *source.Spec.Enabled {
 		// Get credentials from secret if specified
-		endpoint := source.Spec.Endpoint
+		endpoint := source.Spec.FoundryEndpoint
 		apiKey := "default-key" // Should be retrieved from secret
 		apiVersion := "2024-02-15-preview"
 
 		r.FoundryClient = foundry.NewClient(endpoint, apiKey, apiVersion)
 	}
 
-	if !source.Spec.Enabled {
+	if source.Spec.Enabled != nil && !*source.Spec.Enabled {
 		source.Status.Phase = "Disabled"
-		source.Status.AvailableModels = []string{}
+		source.Status.AvailableModelCount = 0
 		if err := r.Status().Update(ctx, source); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -59,15 +59,14 @@ func (r *AzureGPUSourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if err != nil {
 			log.Error(err, "failed to list Azure deployments")
 			source.Status.Phase = "Error"
-			source.Status.LastSyncError = err.Error()
+			source.Status.ErrorMessage = err.Error()
 		} else {
-			source.Status.Phase = "Active"
-			source.Status.AvailableModels = make([]string, len(deployments))
-			for i, d := range deployments {
-				source.Status.AvailableModels[i] = d.Name
-			}
-			source.Status.LastSyncTime = metav1.Now()
-			source.Status.LastSyncError = ""
+			source.Status.Phase = "Ready"
+			source.Status.AvailableModelCount = int32(len(deployments))
+			now := metav1.Now()
+			source.Status.LastSyncTime = &now
+			source.Status.ErrorMessage = ""
+			source.Status.Connected = true
 		}
 	}
 

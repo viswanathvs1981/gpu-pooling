@@ -197,8 +197,12 @@ func (s *SourceSelector) evaluateFoundrySources(ctx context.Context, req *Select
 	for modelName, availability := range inventory.UniqueModels {
 		model := availability.Model
 
+		// Convert float64 to resource.Quantity for comparison
+		tflops := *resource.NewQuantity(int64(model.EstimatedTFlops*1000), resource.DecimalSI)
+		vram := *resource.NewQuantity(int64(model.EstimatedVRAM*1024*1024*1024), resource.BinarySI)
+
 		// Check if model meets requirements
-		if !s.meetsRequirements(model.EstimatedTFlops, model.EstimatedVRAM, req) {
+		if !s.meetsRequirements(tflops, vram, req) {
 			continue
 		}
 
@@ -227,7 +231,7 @@ func (s *SourceSelector) evaluateFoundrySources(ctx context.Context, req *Select
 			Region:           model.Region,
 			GPUModel:         model.ModelFamily,
 			EstimatedCost:    costPerHour,
-			EstimatedLatency: model.AverageLatencyMs,
+			EstimatedLatency: int32(model.AverageLatencyMs),
 			Confidence:       confidence,
 			Reason:           fmt.Sprintf("Foundry %s model", modelName),
 		}

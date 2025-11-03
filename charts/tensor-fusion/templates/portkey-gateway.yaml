@@ -1,3 +1,4 @@
+{{- if .Values.portkey.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,3 +28,5 @@ spec:
           containerPort: 8080
         resources:
           {{- toYaml .Values.portkey.resources | nindent 10 }}
+
+{{- end }}

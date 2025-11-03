@@ -31,7 +31,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ include "tensor-fusion.fullname" . }}-model-catalog
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "tensor-fusion.namespace" . }}
 ---
 apiVersion: v1
 kind: Service

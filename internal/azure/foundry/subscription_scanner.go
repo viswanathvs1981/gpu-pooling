@@ -253,7 +253,7 @@ func (s *SubscriptionScanner) scoreLocation(location *ModelLocation, criteria Se
 	score -= errorPenalty
 
 	// Max latency threshold
-	if criteria.MaxAcceptableLatency > 0 && location.Metrics.AverageLatencyMs > criteria.MaxAcceptableLatency {
+	if criteria.MaxAcceptableLatency > 0 && location.Metrics.AverageLatencyMs > float64(criteria.MaxAcceptableLatency) {
 		score -= 50.0
 	}
 

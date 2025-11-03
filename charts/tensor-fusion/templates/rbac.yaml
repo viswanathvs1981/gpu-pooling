@@ -132,6 +132,9 @@ rules:
   - tensorfusionworkloads
   - workloadprofiles
   - gpunodeclaims
+  - llmroutes
+  - azuregpusources
+  - workloadintelligences
   verbs:
   - create
   - delete
@@ -154,6 +157,9 @@ rules:
   - tensorfusionworkloads/finalizers
   - workloadprofiles/finalizers
   - gpunodeclaims/finalizers
+  - llmroutes/finalizers
+  - azuregpusources/finalizers
+  - workloadintelligences/finalizers
   verbs:
   - update
 - apiGroups:
@@ -170,6 +176,9 @@ rules:
   - tensorfusionworkloads/status
   - workloadprofiles/status
   - gpunodeclaims/status
+  - llmroutes/status
+  - azuregpusources/status
+  - workloadintelligences/status
   verbs:
   - get
   - patch

@@ -39,6 +39,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
+{{- define "tensor-fusion.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "tensor-fusion.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
 {{- define "tensor-fusion.controller.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "tensor-fusion.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}

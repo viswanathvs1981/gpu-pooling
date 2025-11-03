@@ -2,6 +2,9 @@ package keyvault
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -9,17 +12,35 @@ import (
 )
 
 // Tracker tracks API key usage across LLM requests
+// Now integrates with Portkey for token tracking
 type Tracker struct {
-	usage  map[string]*KeyUsage
-	mu     sync.RWMutex
-	logger klog.Logger
+	usage          map[string]*KeyUsage
+	mu             sync.RWMutex
+	logger         klog.Logger
+	portkeyEnabled bool
+	portkeyURL     string
+	portkeyAPIKey  string
+	httpClient     *http.Client
 }
 
 // NewTracker creates a new API key usage tracker
 func NewTracker() *Tracker {
+	return NewTrackerWithPortkey("", "")
+}
+
+// NewTrackerWithPortkey creates a tracker with Portkey integration
+func NewTrackerWithPortkey(portkeyURL, portkeyAPIKey string) *Tracker {
+	enabled := portkeyURL != "" && portkeyAPIKey != ""
+	
 	return &Tracker{
-		usage:  make(map[string]*KeyUsage),
-		logger: klog.NewKlogr().WithName("key-tracker"),
+		usage:          make(map[string]*KeyUsage),
+		logger:         klog.NewKlogr().WithName("key-tracker"),
+		portkeyEnabled: enabled,
+		portkeyURL:     portkeyURL,
+		portkeyAPIKey:  portkeyAPIKey,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -261,8 +282,10 @@ func (t *Tracker) StartPeriodicCleanup(ctx context.Context) {
 	go func() {
 		dailyTicker := time.NewTicker(1 * time.Hour)
 		monthlyTicker := time.NewTicker(24 * time.Hour)
+		syncTicker := time.NewTicker(5 * time.Minute) // Sync with Portkey every 5 minutes
 		defer dailyTicker.Stop()
 		defer monthlyTicker.Stop()
+		defer syncTicker.Stop()
 
 		for {
 			select {
@@ -272,9 +295,97 @@ func (t *Tracker) StartPeriodicCleanup(ctx context.Context) {
 				t.ResetDailyCounters()
 			case <-monthlyTicker.C:
 				t.ResetMonthlyCounters()
+			case <-syncTicker.C:
+				if t.portkeyEnabled {
+					t.SyncFromPortkey(ctx)
+				}
 			}
 		}
 	}()
 }
 
+// PortkeyAnalytics represents Portkey analytics response
+type PortkeyAnalytics struct {
+	APIKey           string  `json:"api_key"`
+	TotalRequests    int64   `json:"total_requests"`
+	TotalTokens      int64   `json:"total_tokens"`
+	PromptTokens     int64   `json:"prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens"`
+	TotalCost        float64 `json:"total_cost"`
+	SuccessRate      float64 `json:"success_rate"`
+}
 
+// SyncFromPortkey syncs token usage data from Portkey
+func (t *Tracker) SyncFromPortkey(ctx context.Context) error {
+	if !t.portkeyEnabled {
+		return fmt.Errorf("portkey integration not enabled")
+	}
+
+	// Query Portkey analytics API
+	url := fmt.Sprintf("%s/v1/analytics", t.portkeyURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		t.logger.Error(err, "Failed to create Portkey request")
+		return err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", t.portkeyAPIKey))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.httpClient.Do(req)
+	if err != nil {
+		t.logger.Error(err, "Failed to query Portkey analytics")
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.logger.Error(fmt.Errorf("portkey returned %d", resp.StatusCode), "Portkey API error")
+		return fmt.Errorf("portkey API returned status %d", resp.StatusCode)
+	}
+
+	var analytics []PortkeyAnalytics
+	if err := json.NewDecoder(resp.Body).Decode(&analytics); err != nil {
+		t.logger.Error(err, "Failed to decode Portkey response")
+		return err
+	}
+
+	// Update local cache with Portkey data
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, a := range analytics {
+		usage, exists := t.usage[a.APIKey]
+		if !exists {
+			usage = &KeyUsage{
+				APIKey:    a.APIKey,
+				FirstUsed: time.Now(),
+				DailyLimits: &Limits{
+					MaxRequestsPerMinute: 1000,
+					MaxTokensPerDay:      1000000,
+					MaxCostPerMonth:      1000.0,
+				},
+				CurrentDayUsage: &DayUsage{
+					Date: time.Now().Format("2006-01-02"),
+				},
+				CurrentMonthUsage: &MonthUsage{
+					Month: time.Now().Format("2006-01"),
+				},
+			}
+			t.usage[a.APIKey] = usage
+		}
+
+		// Update with Portkey data (Portkey is source of truth)
+		usage.TotalRequests = a.TotalRequests
+		usage.TotalTokens = a.TotalTokens
+		usage.PromptTokens = a.PromptTokens
+		usage.CompletionTokens = a.CompletionTokens
+		usage.TotalCost = a.TotalCost
+		usage.SuccessfulRequests = int64(float64(a.TotalRequests) * a.SuccessRate)
+		usage.FailedRequests = a.TotalRequests - usage.SuccessfulRequests
+		usage.LastUsed = time.Now()
+	}
+
+	t.logger.Info("Synced token usage from Portkey", "keys", len(analytics))
+	return nil
+}

@@ -1,0 +1,91 @@
+{{- if .Values.msafOrchestrator.enabled -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: msaf-orchestrator
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-orchestrator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: msaf-orchestrator
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-orchestrator
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-orchestrator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-orchestrator
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-orchestrator
+spec:
+  replicas: {{ .Values.msafOrchestrator.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-orchestrator
+    spec:
+      serviceAccountName: msaf-orchestrator
+      containers:
+      - name: orchestrator
+        image: "{{ .Values.msafOrchestrator.image.repository }}:{{ .Values.msafOrchestrator.image.tag }}"
+        imagePullPolicy: {{ .Values.msafOrchestrator.image.pullPolicy }}
+        command: ["python", "-m", "agents.orchestrator_agent"]
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        - name: NEXUSAI_LLM_ENDPOINT
+          value: "http://vllm-service/v1/chat/completions"
+        - name: NEXUSAI_MEMORY_ENDPOINT
+          value: "http://memory-service:8090"
+        - name: NEXUSAI_SAFETY_ENDPOINT
+          value: "http://aisafety-service/safety"
+        - name: NEXUSAI_PROMPT_OPTIMIZER
+          value: "http://prompt-optimizer:8888"
+        - name: NEXUSAI_GPU_QUOTA
+          value: "2.0"
+        - name: NEXUSAI_TELEMETRY
+          value: "true"
+        resources:
+          {{- toYaml .Values.msafOrchestrator.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+{{- end }}
+

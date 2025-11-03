@@ -1,0 +1,251 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-orchestrator
+  namespace: tensor-fusion-sys
+  labels:
+    app: msaf-orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: msaf-orchestrator
+  template:
+    metadata:
+      labels:
+        app: msaf-orchestrator
+    spec:
+      containers:
+      - name: msaf-orchestrator
+        image: nexusaiacr67655f.azurecr.io/nexusai/python-agents:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: REDIS_URL
+          value: "redis://redis.tensor-fusion-sys:6379"
+        - name: AGENT_TYPE
+          value: "orchestrator"
+        command: ["python", "-m", "nexusai.agents.orchestrator"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-training-agent
+  namespace: tensor-fusion-sys
+  labels:
+    app: msaf-training-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: msaf-training-agent
+  template:
+    metadata:
+      labels:
+        app: msaf-training-agent
+    spec:
+      containers:
+      - name: msaf-training-agent
+        image: nexusaiacr67655f.azurecr.io/nexusai/python-agents:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: REDIS_URL
+          value: "redis://redis.tensor-fusion-sys:6379"
+        - name: AGENT_TYPE
+          value: "training"
+        command: ["python", "-m", "nexusai.agents.training"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-deployment-agent
+  namespace: tensor-fusion-sys
+  labels:
+    app: msaf-deployment-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: msaf-deployment-agent
+  template:
+    metadata:
+      labels:
+        app: msaf-deployment-agent
+    spec:
+      containers:
+      - name: msaf-deployment-agent
+        image: nexusaiacr67655f.azurecr.io/nexusai/python-agents:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: REDIS_URL
+          value: "redis://redis.tensor-fusion-sys:6379"
+        - name: AGENT_TYPE
+          value: "deployment"
+        command: ["python", "-m", "nexusai.agents.deployment"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-cost-agent
+  namespace: tensor-fusion-sys
+  labels:
+    app: msaf-cost-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: msaf-cost-agent
+  template:
+    metadata:
+      labels:
+        app: msaf-cost-agent
+    spec:
+      containers:
+      - name: msaf-cost-agent
+        image: nexusaiacr67655f.azurecr.io/nexusai/python-agents:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: REDIS_URL
+          value: "redis://redis.tensor-fusion-sys:6379"
+        - name: AGENT_TYPE
+          value: "cost"
+        command: ["python", "-m", "nexusai.agents.cost"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: msaf-orchestrator
+  namespace: tensor-fusion-sys
+spec:
+  selector:
+    app: msaf-orchestrator
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: msaf-training-agent
+  namespace: tensor-fusion-sys
+spec:
+  selector:
+    app: msaf-training-agent
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: msaf-deployment-agent
+  namespace: tensor-fusion-sys
+spec:
+  selector:
+    app: msaf-deployment-agent
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: msaf-cost-agent
+  namespace: tensor-fusion-sys
+spec:
+  selector:
+    app: msaf-cost-agent
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP

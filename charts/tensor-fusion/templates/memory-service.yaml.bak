@@ -1,0 +1,110 @@
+{{- if .Values.memoryService.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-memory-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: memory-service
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-memory-service
+rules:
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["agentmemories"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["tensor-fusion.ai"]
+  resources: ["agentmemories/status"]
+  verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-memory-service
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tensor-fusion.fullname" . }}-memory-service
+subjects:
+- kind: ServiceAccount
+  name: {{ include "tensor-fusion.fullname" . }}-memory-service
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tensor-fusion-memory-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: memory-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8090
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "tensor-fusion.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: memory-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tensor-fusion.fullname" . }}-memory-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "tensor-fusion.labels" . | nindent 4 }}
+    app.kubernetes.io/component: memory-service
+spec:
+  replicas: {{ .Values.memoryService.replicas }}
+  selector:
+    matchLabels:
+      {{- include "tensor-fusion.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: memory-service
+  template:
+    metadata:
+      labels:
+        {{- include "tensor-fusion.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: memory-service
+    spec:
+      serviceAccountName: {{ include "tensor-fusion.fullname" . }}-memory-service
+      containers:
+      - name: memory-service
+        image: "{{ .Values.memoryService.image.repository }}:{{ .Values.memoryService.image.tag }}"
+        imagePullPolicy: {{ .Values.memoryService.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8090
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8090"
+        - name: QDRANT_URL
+          value: "http://qdrant.qdrant.svc.cluster.local:6333"
+        - name: GREPTIME_URL
+          value: "http://greptimedb-standalone.greptimedb.svc.cluster.local:4000"
+        args:
+        - --port=8090
+        - --qdrant-url=http://qdrant.qdrant.svc.cluster.local:6333
+        - --greptime-url=http://greptimedb-standalone.greptimedb.svc.cluster.local:4000
+        resources:
+          {{- toYaml .Values.memoryService.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+{{- end }}
+

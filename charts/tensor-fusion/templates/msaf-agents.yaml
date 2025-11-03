@@ -1,0 +1,231 @@
+{{- if .Values.msafAgents.enabled -}}
+---
+# Training Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-training-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-training-agent
+spec:
+  replicas: {{ .Values.msafAgents.training.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-training-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-training-agent
+    spec:
+      containers:
+      - name: training-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-m", "agents.training_agent"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        - name: NEXUSAI_GPU_QUOTA
+          value: "4.0"  # Higher for training
+        resources:
+          {{- toYaml .Values.msafAgents.training.resources | nindent 10 }}
+---
+# Deployment Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-deployment-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-deployment-agent
+spec:
+  replicas: {{ .Values.msafAgents.deployment.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-deployment-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-deployment-agent
+    spec:
+      containers:
+      - name: deployment-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-m", "agents.deployment_agent"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        resources:
+          {{- toYaml .Values.msafAgents.deployment.resources | nindent 10 }}
+---
+# Cost Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-cost-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-cost-agent
+spec:
+  replicas: {{ .Values.msafAgents.cost.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-cost-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-cost-agent
+    spec:
+      containers:
+      - name: cost-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-m", "agents.cost_agent"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        resources:
+          {{- toYaml .Values.msafAgents.cost.resources | nindent 10 }}
+---
+# SmallModel Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-smallmodel-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-smallmodel-agent
+spec:
+  replicas: {{ .Values.msafAgents.smallmodel.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-smallmodel-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-smallmodel-agent
+    spec:
+      containers:
+      - name: smallmodel-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-m", "agents.smallmodel_agent"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        resources:
+          {{- toYaml .Values.msafAgents.smallmodel.resources | nindent 10 }}
+---
+# Hybrid Data Pipeline Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-pipeline-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-pipeline-agent
+spec:
+  replicas: {{ .Values.msafAgents.pipeline.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-pipeline-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-pipeline-agent
+    spec:
+      containers:
+      - name: pipeline-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-c", "from agents.hybrid_agents import DataPipelineAgent; import asyncio; asyncio.run(DataPipelineAgent().main())"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        resources:
+          {{- toYaml .Values.msafAgents.pipeline.resources | nindent 10 }}
+---
+# Hybrid Drift Detection Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-drift-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-drift-agent
+spec:
+  replicas: {{ .Values.msafAgents.drift.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-drift-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-drift-agent
+    spec:
+      containers:
+      - name: drift-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-c", "from agents.hybrid_agents import DriftDetectionAgent; import asyncio; asyncio.run(DriftDetectionAgent().main())"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        resources:
+          {{- toYaml .Values.msafAgents.drift.resources | nindent 10 }}
+---
+# Hybrid Security Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: msaf-security-agent
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: nexusai
+    app.kubernetes.io/component: msaf-security-agent
+spec:
+  replicas: {{ .Values.msafAgents.security.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nexusai
+      app.kubernetes.io/component: msaf-security-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nexusai
+        app.kubernetes.io/component: msaf-security-agent
+    spec:
+      containers:
+      - name: security-agent
+        image: "{{ .Values.msafAgents.image.repository }}:{{ .Values.msafAgents.image.tag }}"
+        imagePullPolicy: {{ .Values.msafAgents.image.pullPolicy }}
+        command: ["python", "-c", "from agents.hybrid_agents import SecurityAgent; import asyncio; asyncio.run(SecurityAgent().main())"]
+        env:
+        - name: NEXUSAI_MCP_URL
+          value: "http://mcp-server:8080"
+        - name: NEXUSAI_SAFETY_ENDPOINT
+          value: "http://aisafety-service/safety"
+        resources:
+          {{- toYaml .Values.msafAgents.security.resources | nindent 10 }}
+{{- end }}
+

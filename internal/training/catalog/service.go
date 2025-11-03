@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	tfv1 "github.com/NexusGPU/tensor-fusion/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
